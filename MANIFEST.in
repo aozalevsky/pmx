@@ -1,0 +1,13 @@
+# Include the license file
+include LICENSE
+
+graft src
+
+# Include additional files 
+include data/bbdep.pkl
+include data/bp.pkl
+include data/fragments.pkl
+include data/ffamber99sb.rtp
+include data/ffamber99sbbon.itp
+include data/ffamber99sbnb.itp
+include data/blosum62_new.mat
