@@ -27,15 +27,16 @@
 # CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 # CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 # ----------------------------------------------------------------------
-import sys, os
-from numpy import *
+
+import sys
+# from numpy import *
 from library import _aliases, pmx_data_file
-from parser import *
+from parser import kickOutComments, readSection, parseList
 
 
 class RTPParser:
 
-    def __init__(self, filename = None):
+    def __init__(self, filename=None):
         self.keys = []
         self.entries = {}
         self.lines = []
@@ -48,36 +49,36 @@ class RTPParser:
         filename = pmx_data_file(filename)
         self.filename = filename
         l = open(filename).readlines()
-        self.lines = kickOutComments(l,';')
+        self.lines = kickOutComments(l, ';')
         self.__get_residue_names()
         for key in self.keys:
-            rtp_lines = self.__read_residue_entry( key)
+            rtp_lines = self.__read_residue_entry(key)
             # read atoms
-            al = readSection(rtp_lines,'[ atoms ]','[')
-            atoms = self.__read_rtp_atoms(key, al )
+            al = readSection(rtp_lines, '[ atoms ]', '[')
+            atoms = self.__read_rtp_atoms(key, al)
             # read bonds
-            bl = readSection(rtp_lines,'[ bonds ]','[')
-            bonds = self.__read_rtp_bonds( key, bl )
+            bl = readSection(rtp_lines, '[ bonds ]', '[')
+            bonds = self.__read_rtp_bonds(key, bl)
             # read dihedrals
-            dl = readSection(rtp_lines,'[ dihedrals ]','[')
+            dl = readSection(rtp_lines, '[ dihedrals ]', '[')
             diheds = self.__read_rtp_dihedrals(key, dl)
             # read impropers
-            il = readSection(rtp_lines,'[ impropers ]','[')
+            il = readSection(rtp_lines, '[ impropers ]', '[')
             improps = self.__read_rtp_impropers(key, il)
             # read cmap (only for charmm)
-            cmap = readSection(rtp_lines,'[ cmap ]','[')
-            #print cmap
-	    #cmap = self.__read_rtp_cmap(key, cl)
+            cmap = readSection(rtp_lines, '[ cmap ]', '[')
+            # print cmap
+        # cmap = self.__read_rtp_cmap(key, cl)
             self.entries[key] = {
                 'atoms': atoms,
                 'bonds': bonds,
                 'diheds': diheds,
                 'improps': improps,
-		'cmap' : cmap
-                }
+                'cmap': cmap}
 
     def __str__(self):
-        s = '<%s | "%s" |  %d residue entries >' % (self.__class__, self.filename, len(self.keys))
+        s = '<%s | "%s" |  %d residue entries >' % (
+            self.__class__, self.filename, len(self.keys))
         return s
 
     def __getitem__(self, item):
@@ -85,13 +86,13 @@ class RTPParser:
 
     def __delitem__(self, item):
         del self.entries[item]
-        self.keys.remove( item )
+        self.keys.remove(item)
 
-    def add_entry(self, name, rtp_dic ):
+    def add_entry(self, name, rtp_dic):
         if name in self.keys:
             del self.entries[name]
         else:
-            self.keys.append( name )
+            self.keys.append(name)
         self.entries[name] = rtp_dic
 
     def __contains__(self, key):
@@ -100,89 +101,91 @@ class RTPParser:
     def __iter__(self):
         return self
 
-    def next( self ):
+    def next(self):
         if self.__cur_id >= len(self.keys):
             self.__cur_id = 0
             raise StopIteration
         name = self.keys[self.__cur_id]
-        entr = self.entries[ self.keys[self.__cur_id] ]
-        self.__cur_id+=1
+        entr = self.entries[self.keys[self.__cur_id]]
+        self.__cur_id += 1
         return name, entr
 
     def write(self, out_file):
-        if not hasattr(out_file,"write"):
-            fp = open(out_file,"w")
+        if not hasattr(out_file, "write"):
+            fp = open(out_file, "w")
         else:
             fp = out_file
         for key in self.keys:
             entr = self.entries[key]
             print >>fp, '[ %s ]' % key
-            print >>fp, ' [ atoms ]' 
+            print >>fp, ' [ atoms ]'
             for atom in entr['atoms']:
-                print >>fp, "%6s   %-15s  %8.5f  %d" % (atom[0], atom[1], atom[2], atom[3])
+                print >>fp, "%6s   %-15s  %8.5f  %d" % (
+                    atom[0], atom[1], atom[2], atom[3])
             if entr['bonds']:
-                print >>fp, ' [ bonds ]' 
+                print >>fp, ' [ bonds ]'
                 for bond in entr['bonds']:
-                    print >>fp, "%6s  %6s" % (bond[0], bond[1]) 
+                    print >>fp, "%6s  %6s" % (bond[0], bond[1])
             if entr['diheds']:
-                print >>fp, ' [ dihedrals ]' 
+                print >>fp, ' [ dihedrals ]'
                 for dih in entr['diheds']:
-                    print >>fp, "%6s  %6s  %6s  %6s  %-25s" % ( dih[0], dih[1], dih[2], dih[3], dih[4])
+                    print >>fp, "%6s  %6s  %6s  %6s  %-25s" % (
+                        dih[0], dih[1], dih[2], dih[3], dih[4])
             if entr['improps']:
-                print >>fp, ' [ impropers ]' 
+                print >>fp, ' [ impropers ]'
                 for dih in entr['improps']:
                     try:
-                        print >>fp, "%6s  %6s  %6s  %6s  %-25s" % ( dih[0], dih[1], dih[2], dih[3], dih[4])
+                        print >>fp, "%6s  %6s  %6s  %6s  %-25s" % (
+                            dih[0], dih[1], dih[2], dih[3], dih[4])
                     except:
-                        print >>fp, "%6s  %6s  %6s  %6s " % ( dih[0], dih[1], dih[2], dih[3])
+                        print >>fp, "%6s  %6s  %6s  %6s " % (
+                            dih[0], dih[1], dih[2], dih[3])
             print >>fp
 
-
-
-
-            
     def __check_residue_tree(self, model):
         for c in model.chains:
             if not c.residue_tree_ok:
-                print >>sys.stderr, 'pmx_Error_> Broken residue tree in chain ', c.id
+                print >>sys.stderr, 'pmx_Error_> Broken residue \
+                    tree in chain ', c.id
                 sys.exit(1)
-            
-    def assign_params( self, model):
+
+    def assign_params(self, model):
         self.__check_residue_tree(model)
         self.__assign_atom_params(model)
         self.__make_bonds(model)
         self.__make_angles(model)
         self.__make_dihedrals(model)
         self.__make_impropers(model)
-        
+
     def assign_dihedral_params(self, model, directives):
         for dih in model.dihedral_list:
             a1, a2, a3, a4 = dih[:4]
-            resid = a2.resnr
-            rtp_d = self.entries[a2.resname]
+            # resid = a2.resnr  # Assigned but never used
+            # rtp_d = self.entries[a2.resname]  # Assigned but never used
             name2 = a2.name
             if a1.resnr == a2.resnr:
                 name1 = a1.name
             elif a1.resnr == a2.resnr - 1:
-                name1 = '-'+a1.name
+                name1 = '-' + a1.name
             elif a1.resnr == a2.resnr + 1:
-                name1 = '+'+a1.name
+                name1 = '+' + a1.name
             if a3.resnr == a2.resnr:
                 name3 = a3.name
             elif a3.resnr == a2.resnr - 1:
-                name3 = '-'+a3.name
+                name3 = '-' + a3.name
             elif a3.resnr == a2.resnr + 1:
-                name3 = '+'+a3.name
+                name3 = '+' + a3.name
             if a4.resnr == a2.resnr:
                 name4 = a4.name
             elif a4.resnr == a2.resnr - 1:
-                name4 = '-'+a4.name
+                name4 = '-' + a4.name
             elif a1.resnr == a2.resnr + 1:
-                name4 = '+'+a4.name
-            d = self.__find_rtp_dihedral(a2.resname, name1, name2, name3, name4 )
+                name4 = '+' + a4.name
+            d = self.__find_rtp_dihedral(
+                a2.resname, name1, name2, name3, name4)
             if d is not None:
-                if directives.has_key(d[4]):
-                    dih = dih[:5]+directives[d[4]]
+                if d[4] in directives:
+                    dih = dih[:5] + directives[d[4]]
                 else:
                     print 'No directive found'
                     sys.exit(1)
@@ -196,18 +199,18 @@ class RTPParser:
                 atom.atomtype = atom_entry[1]
                 atom.q = atom_entry[2]
                 atom.cgnr = atom_entry[3]
-                
+
     def __make_bonds(self, model):
         model.bond_list = []
         for residue in model.residues:
             rtp_bonds = self.entries[residue.resname]['bonds']
             for a1, a2 in rtp_bonds:
-                if a1[0] not in ['+','-'] and a2[0] not in ['+','-']:
+                if a1[0] not in ['+', '-'] and a2[0] not in ['+', '-']:
                     atom1 = residue[a1]
                     atom2 = residue[a2]
                     atom1.bonds.append(atom2)
                     atom2.bonds.append(atom1)
-                    model.bond_list.append( [atom1, atom2] )
+                    model.bond_list.append([atom1, atom2])
                 else:
                     if a1[0] == '-':
                         atom1 = residue.previous[a1[1:]]
@@ -224,26 +227,26 @@ class RTPParser:
                     if atom2 not in atom1.bonds:
                         atom1.bonds.append(atom2)
                         atom2.bonds.append(atom1)
-                        model.bond_list.append( [atom1, atom2] )
+                        model.bond_list.append([atom1, atom2])
 
         # cys
         for residue in model.residues:
-            if residue.resname in ['CYS2','CCYX']:
+            if residue.resname in ['CYS2', 'CCYX']:
                 for r in model.residues:
-                    if r.resname in ['CYS2','CCYX'] and r.id < residue.id:
+                    if r.resname in ['CYS2', 'CCYX'] and r.id < residue.id:
                         sg1 = residue['SG']
                         sg2 = r['SG']
                         d = sg1 - sg2
-                        if d < 2.5 :
-                            print >> sys.stderr, 'pmx__> Disulfid bond between residue', sg1.resnr, 'and', sg2.resnr
+                        if d < 2.5:
+                            print >> sys.stderr, 'pmx__> Disulfid bond \
+                                between residue', sg1.resnr, 'and', sg2.resnr
                             sg1.bonds.append(sg2)
                             sg2.bonds.append(sg1)
-                            model.bond_list.append( [sg1, sg2] )
-                            
+                            model.bond_list.append([sg1, sg2])
+
         for atom in model.atoms:
             for b in atom.bonds:
-                atom.connected.append( b )
-
+                atom.connected.append(b)
 
     def __make_angles(self, model):
         model.angle_list = []
@@ -251,12 +254,12 @@ class RTPParser:
             for b in atom.bonds:
                 for bb in b.bonds:
                     if bb.id < atom.id:
-                        atom.b13.append( bb )
-                        bb.b13.append( atom )
-                        atom.connected.append( bb )
-                        bb.connected.append( atom )
-                        model.angle_list.append( [atom, b, bb] )
-                        
+                        atom.b13.append(bb)
+                        bb.b13.append(atom)
+                        atom.connected.append(bb)
+                        bb.connected.append(atom)
+                        model.angle_list.append([atom, b, bb])
+
     def __make_dihedrals(self, model):
         model.dihedral_list = []
         for atom in model.atoms:
@@ -266,16 +269,13 @@ class RTPParser:
                         for bbb in bb.bonds:
                             if atom.id < bbb.id:
                                 if bbb not in atom.bonds:
-                                    model.dihedral_list.append( [atom, b, bb, bbb] )
+                                    model.dihedral_list.append(
+                                        [atom, b, bb, bbb])
                                     if bbb not in atom.connected:
-                                        atom.b14.append( bbb )
-                                        bbb.b14.append( atom )
-                                        atom.connected.append( bbb )
-                                        bbb.connected.append( atom )
-                                    
-                    
-
-
+                                        atom.b14.append(bbb)
+                                        bbb.b14.append(atom)
+                                        atom.connected.append(bbb)
+                                        bbb.connected.append(atom)
 
     def __make_impropers(self, model):
         model.improper_list = []
@@ -291,153 +291,146 @@ class RTPParser:
                         atom = residue.previous[name[1:]]
                     else:
                         atom = residue[name]
-                    atoms.append( atom )
+                    atoms.append(atom)
                 assert len(atoms) == 4
-                model.improper_list.append( atoms+ [imp[4]]  )
-        
-    
+                model.improper_list.append(atoms + [imp[4]])
+
     def __get_residue_names(self):
         self.keys = []
         for line in self.lines:
             if line.strip().startswith('['):
                 if line.strip()[1:-1].strip() not in \
-                       ['atoms','bonds','dihedrals','impropers','bondedtypes']:
-                    self.keys.append( line.strip()[1:-1].strip() )
-    
+                        ['atoms', 'bonds', 'dihedrals',
+                            'impropers', 'bondedtypes']:
+                    self.keys.append(line.strip()[1:-1].strip())
 
-
-    def __read_residue_entry(self, key ):
+    def __read_residue_entry(self, key):
         r = []
         for line in self.lines:
             if line.strip()[1:-1].strip() == key:
-                idx = self.lines.index( line )
-        for line in self.lines[idx+1:]:
+                idx = self.lines.index(line)
+        for line in self.lines[idx + 1:]:
             if line.strip().startswith('['):
                 if line.strip()[1:-1].strip() not in \
-                       ['atoms','bonds','dihedrals','impropers','cmap']:
+                        ['atoms', 'bonds', 'dihedrals', 'impropers', 'cmap']:
                     break
                 else:
                     r.append(line)
             else:
                 r.append(line)
         return r
-        
-    
-    def __read_rtp_atoms(self, resname, lines ):
+
+    def __read_rtp_atoms(self, resname, lines):
         atoms = []
         for line in lines:
             entr = line.split()
-            if _aliases.has_key( resname ) :
-                if _aliases[resname].has_key(entr[0]):
+            if resname in _aliases:
+                if entr[0] in _aliases[resname]:
                     entr[0] = _aliases[resname][entr[0]]
             entr[2] = float(entr[2])
             entr[3] = int(entr[3])
             atoms.append(entr)
         return atoms
 
-    def __read_rtp_bonds(self, resname, lines ):
+    def __read_rtp_bonds(self, resname, lines):
         bonds = []
         for line in lines:
             entr = line.split()
-            if entr[0] not in ['+','-']:
-                if _aliases.has_key( resname ) :
-                    if _aliases[resname].has_key(entr[0]):
+            if entr[0] not in ['+', '-']:
+                if resname in _aliases:
+                    if entr[0] in _aliases[resname]:
                         entr[0] = _aliases[resname][entr[0]]
-            if entr[1] not in ['+','-']:
-                if _aliases.has_key( resname ) :
-                    if _aliases[resname].has_key(entr[1]):
+            if entr[1] not in ['+', '-']:
+                if resname in _aliases:
+                    if entr[1] in _aliases[resname]:
                         entr[1] = _aliases[resname][entr[1]]
             bonds.append(entr)
         return bonds
 
-    def __read_rtp_dihedrals(self, resname, lines ):
+    def __read_rtp_dihedrals(self, resname, lines):
         diheds = []
         for line in lines:
             entr = line.split()
-            if entr[0] not in ['+','-']:
-                if _aliases.has_key( resname ) :
-                    if _aliases[resname].has_key(entr[0]):
+            if entr[0] not in ['+', '-']:
+                if resname in _aliases:
+                    if entr[0] in _aliases[resname]:
                         entr[0] = _aliases[resname][entr[0]]
-            if entr[1] not in ['+','-']:
-                if _aliases.has_key( resname ) :
-                    if _aliases[resname].has_key(entr[1]):
+            if entr[1] not in ['+', '-']:
+                if resname in _aliases:
+                    if entr[1] in _aliases[resname]:
                         entr[1] = _aliases[resname][entr[1]]
-            if entr[2] not in ['+','-']:
-                if _aliases.has_key( resname ) :
-                    if _aliases[resname].has_key(entr[2]):
+            if entr[2] not in ['+', '-']:
+                if resname in _aliases:
+                    if entr[2] in _aliases[resname]:
                         entr[2] = _aliases[resname][entr[2]]
-            if entr[3] not in ['+','-']:
-                if _aliases.has_key( resname ) :
-                    if _aliases[resname].has_key(entr[3]):
+            if entr[3] not in ['+', '-']:
+                if resname in _aliases:
+                    if entr[3] in _aliases[resname]:
                         entr[3] = _aliases[resname][entr[3]]
             if len(entr) == 5:
                 diheds.append(entr)
             else:
-                diheds.append(entr+[''])
+                diheds.append(entr + [''])
         return diheds
 
-    def __read_rtp_impropers(self, resname, lines ):
+    def __read_rtp_impropers(self, resname, lines):
         improps = []
         for line in lines:
             entr = line.split()
-            if entr[0] not in ['+','-']:
-                if _aliases.has_key( resname ) :
-                    if _aliases[resname].has_key(entr[0]):
+            if entr[0] not in ['+', '-']:
+                if resname in _aliases:
+                    if entr[0] in _aliases[resname]:
                         entr[0] = _aliases[resname][entr[0]]
-            if entr[1] not in ['+','-']:
-                if _aliases.has_key( resname ) :
-                    if _aliases[resname].has_key(entr[1]):
+            if entr[1] not in ['+', '-']:
+                if resname in _aliases:
+                    if entr[1] in _aliases[resname]:
                         entr[1] = _aliases[resname][entr[1]]
-            if entr[2] not in ['+','-']:
-                if _aliases.has_key( resname ) :
-                    if _aliases[resname].has_key(entr[2]):
+            if entr[2] not in ['+', '-']:
+                if resname in _aliases:
+                    if entr[2] in _aliases[resname]:
                         entr[2] = _aliases[resname][entr[2]]
-            if entr[3] not in ['+','-']:
-                if _aliases.has_key( resname ) :
-                    if _aliases[resname].has_key(entr[3]):
+            if entr[3] not in ['+', '-']:
+                if resname in _aliases:
+                    if entr[3] in _aliases[resname]:
                         entr[3] = _aliases[resname][entr[3]]
             if len(entr) == 5:
                 improps.append(entr)
             else:
-                improps.append(entr+[''])
+                improps.append(entr + [''])
         return improps
-
 
     def __find_rtp_dihedral(self, key, name1, name2, name3, name4):
         rtp_d = self.entries[key]['diheds']
         for d in rtp_d:
-            if (d[0] == name1 and \
-               d[1] == name2 and \
-               d[2] == name3 and \
-               d[3] == name4) or \
-               (d[0] == name4 and \
-               d[1] == name3 and \
-               d[2] == name2 and \
-               d[3] == name1):
+            if (d[0] == name1 and
+                d[1] == name2 and
+                d[2] == name3 and
+                d[3] == name4) or \
+               (d[0] == name4 and
+                    d[1] == name3 and
+                    d[2] == name2 and
+                    d[3] == name1):
                 return d
         return None
 
     def __find_rtp_improper(self, key, name1, name2, name3, name4):
         rtp_i = self.entries[key]['improps']
         for d in rtp_i:
-            if (d[0] == name1 and \
-               d[1] == name2 and \
-               d[2] == name3 and \
-               d[3] == name4) or \
-               (d[0] == name4 and \
-               d[1] == name3 and \
-               d[2] == name2 and \
-               d[3] == name1):
+            if (d[0] == name1 and
+                d[1] == name2 and
+                d[2] == name3 and
+                d[3] == name4) or \
+               (d[0] == name4 and
+                    d[1] == name3 and
+                    d[2] == name2 and
+                    d[3] == name1):
                 return d
         return None
-    
-                
 
 
 class BondedParser:
 
-
-    def __init__(self, filename = None, version = 'old'):
+    def __init__(self, filename=None, version='old'):
         self.lines = []
         self.filename = ''
         self.directives = {}
@@ -446,177 +439,183 @@ class BondedParser:
         self.dihedraltypes = []
         if filename:
             self.parse(filename)
-            
+
     def parse(self, filename):
-        if not hasattr(filename,"append"): # not a list
+        if not hasattr(filename, "append"):  # not a list
             filename = pmx_data_file(filename)
             self.filename = filename
             l = open(filename).readlines()
         else:
             l = filename
             self.filename = '< from list >'
-        self.lines = kickOutComments(l,';')
+        self.lines = kickOutComments(l, ';')
         self.__parse_directives()
         self.__parse_bondtypes()
         self.__parse_angletypes()
         self.__parse_dihedraltypes()
 
     def __str__(self):
-        s = '< %s | %s >' % (self.__class__, self.filename )
+        s = '< %s | %s >' % (self.__class__, self.filename)
         return s
-    
+
     def assign_params(self, model):
         for bond in model.bond_list:
             params = self.get_bond_param(bond[0].bond_type, bond[1].bond_type)
-            bond.extend( params )
+            bond.extend(params)
         for angle in model.angle_list:
-            params = self.get_angle_param(angle[0].bond_type, angle[1].bond_type, angle[2].bond_type)
-            angle.extend( params )
+            params = self.get_angle_param(angle[0].bond_type, angle[
+                                          1].bond_type, angle[2].bond_type)
+            angle.extend(params)
         for dih in model.dihedral_list:
-            params = self.get_dihedral_param(dih[0].bond_type, dih[1].bond_type, dih[2].bond_type, dih[3].bond_type, 3) 
-            dih.extend( params )
+            params = self.get_dihedral_param(
+                dih[0].bond_type,
+                dih[1].bond_type,
+                dih[2].bond_type,
+                dih[3].bond_type,
+                3)
+            dih.extend(params)
 
         for dih in model.improper_list:
             if dih[4] == '':
-                params = self.get_dihedral_param(dih[0].bond_type, dih[1].bond_type, dih[2].bond_type, dih[3].bond_type, 1)
-                dih.extend( params[1:] )
+                params = self.get_dihedral_param(
+                    dih[0].bond_type,
+                    dih[1].bond_type,
+                    dih[2].bond_type,
+                    dih[3].bond_type,
+                    1)
+                dih.extend(params[1:])
             else:
-                dih = dih[:4] + [1]+ self.directives[dih[4]]
+                dih = dih[:4] + [1] + self.directives[dih[4]]
 
-
-            
-    def get_bond_param(self, type1, type2 ):
+    def get_bond_param(self, type1, type2):
         for entr in self.bondtypes:
             if (type1 == entr[0] and type2 == entr[1]) or \
                (type1 == entr[1] and type2 == entr[0]):
                 return entr[2:]
         return None
-    
+
     def get_angle_param(self, type1, type2, type3):
         for entr in self.angletypes:
-            if (type1 == entr[0] and \
-                type2 == entr[1] and \
+            if (type1 == entr[0] and
+                type2 == entr[1] and
                 type3 == entr[2]) or \
-                (type1 == entr[2] and \
-                 type2 == entr[1] and \
+                (type1 == entr[2] and
+                 type2 == entr[1] and
                  type3 == entr[0]):
                 return entr[3:]
-        return None 
+        return None
 
-    
-    def get_dihedral_param(self, type1,type2,type3,type4,func):
-        
-	self.result = []
-	found = 0
+    def get_dihedral_param(self, type1, type2, type3, type4, func):
+
+        self.result = []
+        found = 0
         for entr in self.dihedraltypes:
-            if (type1 == entr[0] and \
-                type2 == entr[1] and \
-                type3 == entr[2] and \
-                type4 == entr[3] and func==entr[4]) or \
-                (type1 == entr[3] and \
-                 type2 == entr[2] and \
-                 type3 == entr[1] and \
-                 type4 == entr[0] and func==entr[4]):
-	 	self.result.append(entr[4:])
-		found = 1
-		if(func != 9):
-		    return self.result
-	if( found==1 ):
-	    return self.result
-        for entr in self.dihedraltypes:
-            if ('X' == entr[0] and \
-                type2 == entr[1] and \
-                type3 == entr[2] and \
-                type4 == entr[3] and func==entr[4]) or \
-                (type1 == entr[0] and \
-                 type2 == entr[1] and \
-                 type3 == entr[2] and \
-                 'X' == entr[3] and func==entr[4]):
+            if (type1 == entr[0] and
+                type2 == entr[1] and
+                type3 == entr[2] and
+                type4 == entr[3] and func == entr[4]) or \
+                (type1 == entr[3] and
+                 type2 == entr[2] and
+                 type3 == entr[1] and
+                 type4 == entr[0] and func == entr[4]):
                 self.result.append(entr[4:])
+                found = 1
                 if(func != 9):
                     return self.result
-            if ('X' == entr[3] and \
-                type2 == entr[2] and \
-                type3 == entr[1] and \
-                type4 == entr[0] and func==entr[4]) or \
-                (type1 == entr[3] and \
-                 type2 == entr[2] and \
-                 type3 == entr[1] and \
-                 'X' == entr[0] and func==entr[4]):
-		self.result.append(entr[4:])
-		found = 1
-                if(func != 9):
-                    return self.result
-        if( found==1 ):
+        if(found == 1):
             return self.result
         for entr in self.dihedraltypes:
-            if ('X' == entr[0] and \
-                type2 == entr[1] and \
-                type3 == entr[2] and \
-                'X' == entr[3] and func==entr[4]) or \
-                ('X' == entr[3] and \
-                 type2 == entr[2] and \
-                 type3 == entr[1] and \
-                 'X' == entr[0] and func==entr[4]):
+            if ('X' == entr[0] and
+                type2 == entr[1] and
+                type3 == entr[2] and
+                type4 == entr[3] and func == entr[4]) or \
+                (type1 == entr[0] and
+                 type2 == entr[1] and
+                 type3 == entr[2] and
+                 'X' == entr[3] and func == entr[4]):
                 self.result.append(entr[4:])
-		found = 1
                 if(func != 9):
                     return self.result
-        if( found==1 ):
+            if ('X' == entr[3] and
+                type2 == entr[2] and
+                type3 == entr[1] and
+                type4 == entr[0] and func == entr[4]) or \
+                (type1 == entr[3] and
+                 type2 == entr[2] and
+                 type3 == entr[1] and
+                 'X' == entr[0] and func == entr[4]):
+                self.result.append(entr[4:])
+                found = 1
+                if(func != 9):
+                    return self.result
+        if(found == 1):
             return self.result
         for entr in self.dihedraltypes:
-            if ('X' == entr[0] and \
-                'X' == entr[1] and \
-                type3 == entr[2] and \
-                type4 == entr[3] and func==entr[4]) or \
-                (type1 == entr[3] and \
-                 type2 == entr[2] and \
-                 'X' == entr[1] and \
-                 'X' == entr[0] and func==entr[4]):
+            if ('X' == entr[0] and
+                type2 == entr[1] and
+                type3 == entr[2] and
+                'X' == entr[3] and func == entr[4]) or \
+                ('X' == entr[3] and
+                 type2 == entr[2] and
+                 type3 == entr[1] and
+                 'X' == entr[0] and func == entr[4]):
                 self.result.append(entr[4:])
-		found = 1
+                found = 1
                 if(func != 9):
                     return self.result
-        if( found==1 ):
+        if(found == 1):
             return self.result
-        for entr in self.dihedraltypes: # exchange 1 -> 3
-            if ('X' == entr[0] and \
-                'X' == entr[1] and \
-                type3 == entr[2] and \
-                type2 == entr[3] and func==entr[4]) or \
-                (type1 == entr[3] and \
-                 type4 == entr[2] and \
-                 'X' == entr[1] and \
-                 'X' == entr[0] and func==entr[4]):
+        for entr in self.dihedraltypes:
+            if ('X' == entr[0] and
+                'X' == entr[1] and
+                type3 == entr[2] and
+                type4 == entr[3] and func == entr[4]) or \
+                (type1 == entr[3] and
+                 type2 == entr[2] and
+                 'X' == entr[1] and
+                 'X' == entr[0] and func == entr[4]):
+                self.result.append(entr[4:])
+                found = 1
+                if(func != 9):
+                    return self.result
+        if(found == 1):
+            return self.result
+        for entr in self.dihedraltypes:  # exchange 1 -> 3
+            if ('X' == entr[0] and
+                'X' == entr[1] and
+                type3 == entr[2] and
+                type2 == entr[3] and func == entr[4]) or \
+                (type1 == entr[3] and
+                 type4 == entr[2] and
+                 'X' == entr[1] and
+                 'X' == entr[0] and func == entr[4]):
                 self.result.append(entr[4:])
                 if(func != 9):
                     return self.result
-        for entr in self.dihedraltypes: 
-            if (type1 == entr[0] and \
-                'X' == entr[1] and \
-                'X' == entr[2] and \
-                type4 == entr[3] and func==entr[4]) or \
-                (type1 == entr[3] and \
-                 'X' == entr[1] and \
-                 'X' == entr[2] and \
-                 type4 == entr[0] and func==entr[4]):
+        for entr in self.dihedraltypes:
+            if (type1 == entr[0] and
+                'X' == entr[1] and
+                'X' == entr[2] and
+                type4 == entr[3] and func == entr[4]) or \
+                (type1 == entr[3] and
+                 'X' == entr[1] and
+                 'X' == entr[2] and
+                 type4 == entr[0] and func == entr[4]):
                 self.result.append(entr[4:])
                 if(func != 9):
                     return self.result
-        
+
         return self.result
-
-
 
     def __parse_directives(self):
         for line in self.lines:
             if line.startswith('#define'):
                 entr = line.split()
                 name = entr[1]
-                params = [float(x) for x in entr[2:] ]
+                params = [float(x) for x in entr[2:]]
                 self.directives[name] = params
-        self.lines = kickOutComments(self.lines,'#')
-        
+        self.lines = kickOutComments(self.lines, '#')
+
     def __parse_bondtypes(self):
         res = []
         starts = []
@@ -624,8 +623,8 @@ class BondedParser:
             if line.strip().startswith('[ bondtypes ]'):
                 starts.append(i)
         for s in starts:
-            lst = readSection(self.lines[s:],'[ bondtypes ]','[')
-            lst = parseList('ssiff',lst)
+            lst = readSection(self.lines[s:], '[ bondtypes ]', '[')
+            lst = parseList('ssiff', lst)
             res.extend(lst)
         self.bondtypes = res
 
@@ -636,17 +635,17 @@ class BondedParser:
             if line.strip().startswith('[ angletypes ]'):
                 starts.append(i)
         for s in starts:
-            lst = readSection(self.lines[s:],'[ angletypes ]','[')
-	    try :
-                lst = parseList('sssiff',lst)
+            lst = readSection(self.lines[s:], '[ angletypes ]', '[')
+            try:
+                lst = parseList('sssiff', lst)
             except:
                 try:
-                    lst = parseList('sssiffff',lst)
-		except:
-		    print "Unkown Angle type"
-		    exit()
+                    lst = parseList('sssiffff', lst)
+                except:
+                    print "Unkown Angle type"
+                    exit()
             res.extend(lst)
-        self.angletypes = res 
+        self.angletypes = res
 
     def __parse_dihedraltypes(self):
         res = []
@@ -655,26 +654,24 @@ class BondedParser:
             if line.strip().startswith('[ dihedraltypes ]'):
                 starts.append(i)
         for s in starts:
-            lst = readSection(self.lines[s:],'[ dihedraltypes ]','[')
+            lst = readSection(self.lines[s:], '[ dihedraltypes ]', '[')
             try:
-                lst = parseList('ssssiffffff',lst)
+                lst = parseList('ssssiffffff', lst)
             except:
                 try:
-                    lst = parseList('ssssiffi',lst)
+                    lst = parseList('ssssiffi', lst)
                 except:
-		    try :
-                        lst = parseList('ssiffi',lst)
-	            except :
-                        lst = parseList('ssssiff',lst)
+                    try:
+                        lst = parseList('ssiffi', lst)
+                    except:
+                        lst = parseList('ssssiff', lst)
             res.extend(lst)
         self.dihedraltypes = res
 
 
-
 class NBParser:
 
-
-    def __init__(self, filename = None, version = 'old', ff='amber'):
+    def __init__(self, filename=None, version='old', ff='amber'):
         self.lines = []
         self.ff = ff
         self.filename = ''
@@ -682,114 +679,107 @@ class NBParser:
         if filename is not None:
             self.parse(filename, version)
 
-            
     def parse(self, filename, version):
-        if not hasattr(filename,"append"): # not a list
+        if not hasattr(filename, "append"):  # not a list
             filename = pmx_data_file(filename)
             l = open(filename).readlines()
             self.filename = filename
         else:
             l = filename
             self.filename = '< from list >'
-        self.lines = kickOutComments(l,';')
+        self.lines = kickOutComments(l, ';')
         self.__parse_atomtypes(version)
 
     def __str__(self):
-        s = '< %s | %s >' % (self.__class__, self.filename )
+        s = '< %s | %s >' % (self.__class__, self.filename)
         return s
-    
+
     def __parse_atomtypes(self, version):
 
         self.atomtypes = {}
-        lst = readSection(self.lines,'[ atomtypes ]','[')
+        lst = readSection(self.lines, '[ atomtypes ]', '[')
         if version == 'old':
-            if self.ff.startswith('amber') :
-                lst = parseList('ssffsff',lst)
+            if self.ff.startswith('amber'):
+                lst = parseList('ssffsff', lst)
                 for entr in lst:
                     self.atomtypes[entr[0]] = {
-                        'bond_type':entr[1],
-                        'mass':float(entr[2]),
-                        'sigma':entr[5]*10, # nm -> A
-                        'eps':entr[6]
-                        }
+                        'bond_type': entr[1],
+                        'mass': float(entr[2]),
+                        'sigma': entr[5] * 10,  # nm -> A
+                        'eps': entr[6]
+                    }
             elif self.ff.startswith('opls'):
-                lst = parseList('ssiffsff',lst)
+                lst = parseList('ssiffsff', lst)
                 for entr in lst:
                     self.atomtypes[entr[0]] = {
-                        'bond_type':entr[1],
-                        'mass':float(entr[3]),
-                        'sigma':entr[6]*10, # nm -> A
-                        'eps':entr[7]
-                        }
-                
+                        'bond_type': entr[1],
+                        'mass': float(entr[3]),
+                        'sigma': entr[6] * 10,  # nm -> A
+                        'eps': entr[7]
+                    }
+
         elif version == 'new':
             if self.ff.startswith('amber') or self.ff.startswith('charmm'):
-                lst = parseList('siffsff',lst)
+                lst = parseList('siffsff', lst)
                 for entr in lst:
                     self.atomtypes[entr[0]] = {
-                        'bond_type':entr[0],
-                        'mass':float(entr[2]),
-                        'sigma':entr[5]*10, # nm -> A
-                        'eps':entr[6]
-                        }
-            elif self.ff.startswith('opls') :
-                lst = parseList('ssiffsff',lst)
+                        'bond_type': entr[0],
+                        'mass': float(entr[2]),
+                        'sigma': entr[5] * 10,  # nm -> A
+                        'eps': entr[6]
+                    }
+            elif self.ff.startswith('opls'):
+                lst = parseList('ssiffsff', lst)
                 for entr in lst:
                     self.atomtypes[entr[0]] = {
-                        'bond_type':entr[1],
-                        'mass':float(entr[3]),
-                        'sigma':entr[6]*10, # nm -> A
-                        'eps':entr[7]
-			}
+                        'bond_type': entr[1],
+                        'mass': float(entr[3]),
+                        'sigma': entr[6] * 10,  # nm -> A
+                        'eps': entr[7]
+                    }
             elif self.ff.startswith('gaff'):
                 try:
-                    lst = parseList('sffsff',lst)
+                    lst = parseList('sffsff', lst)
                     for entr in lst:
                         self.atomtypes[entr[0]] = {
-                            'bond_type':entr[1],
-                            'mass':float(entr[2]),
-#                           'charge':float(entr[3]),
-                            'sigma':entr[4]*10, # nm -> A
-                            'eps':entr[5]
-                            }
+                            'bond_type': entr[1],
+                            'mass': float(entr[2]),
+                            #                           'charge':float(entr[3]),
+                            'sigma': entr[4] * 10,  # nm -> A
+                            'eps': entr[5]
+                        }
                 except:
-                    lst = parseList('ssffsff',lst)
+                    lst = parseList('ssffsff', lst)
                     for entr in lst:
                         self.atomtypes[entr[0]] = {
-                            'bond_type':entr[1],
-                            'mass':float(entr[2]),
-                            'charge':float(entr[3]),
-                            'sigma':entr[5]*10, # nm -> A
-                            'eps':entr[6]
-               		    }
- 
+                            'bond_type': entr[1],
+                            'mass': float(entr[2]),
+                            'charge': float(entr[3]),
+                            'sigma': entr[5] * 10,  # nm -> A
+                            'eps': entr[6]
+                        }
+
     def assign_params(self, model):
         for atom in model.atoms:
             atom.bond_type = self.atomtypes[atom.atomtype]['bond_type']
             atom.sigma = self.atomtypes[atom.atomtype]['sigma']
             atom.eps = self.atomtypes[atom.atomtype]['eps']
-            
-
-
 
 
 class ATPParser:
-    
-    def __init__(self,  fn = 'ffamber99sb.atp'):
+
+    def __init__(self, fn='ffamber99sb.atp'):
         self.fn = fn
         self.dic = {}
         if fn is not None:
             self.parse()
-        
+
     def parse(self):
         lst = open(self.fn).readlines()
-        lst = kickOutComments(lst,';')
+        lst = kickOutComments(lst, ';')
         lst = parseList('sf', lst)
-        for tp,  mass in lst:
+        for tp, mass in lst:
             self.dic[tp] = mass
-        
-    def __getitem__(self,  item):
+
+    def __getitem__(self, item):
         return self.dic[item]
-        
-
-
