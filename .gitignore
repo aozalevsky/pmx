@@ -3,3 +3,8 @@
 build.sh
 .localhistory
 build
+*.so
+*.pyc
+dist
+pmx.egg-info
+*.sw*
