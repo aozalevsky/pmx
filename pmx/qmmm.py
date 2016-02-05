@@ -8,9 +8,11 @@ import pyparsing as pg
 import numpy as np
 import textwrap
 from collections import OrderedDict as odict
+from pmx import ffparser
 
 
 class GRO(object):
+
     def __init__(self, fi, fo=None):
         self.fi = fi
         self.fo = fo
@@ -84,11 +86,11 @@ class GRO(object):
 
 
 class AddLinkingAtoms(object):
+
     def __init__(self, args):
         """Initialize class instance"""
         self.LA = 'LA'
         self.args = args
-
 
         if 'GMXLIB' in os.environ:
             self.GMXLIB = os.environ['GMXLIB']
@@ -192,20 +194,23 @@ class AddLinkingAtoms(object):
             print 'Forcefield {} in current directory'.format(self.ff_name)
             self.ff_path = self.ff_name
         elif os.path.isdir(os.path.join(self.GMXLIB, self.ff_name)):
-            print 'Forcefield {0} in {1} directory'.format(self.ff_name, self.GMXLIB)
+            print 'Forcefield {0} in {1} directory'.format(
+                self.ff_name, self.GMXLIB)
             self.ff_path = os.path.join(self.GMXLIB, self.ff_name)
 
-        with open(os.path.join(self.ff_path, 'atomtypes.atp'), 'r') as f:
-            atypes = self.read_atomtypes(f)
+        atpfn = os.path.join(self.ff_path, 'atomtypes.atp')
+        atypes = ffparser.ATPParser(atpfn)
 
-        if self.LA not in atypes:
-            raise TypeError('Missing {} atomtype in atomtypes.atp'.format(self.LA))
+        if self.LA not in atypes.dic:
+            raise TypeError(
+                'Missing {} atomtype in atomtypes.atp'.format(self.LA))
 
         with open(os.path.join(self.ff_path, 'ffnonbonded.itp'), 'r') as f:
             nonbonded = self.read_nonbonded(f)
 
         if self.LA not in nonbonded:
-            raise TypeError('Missing {} atomtype in ffnonbonded.itp'.format(self.LA))
+            raise TypeError(
+                'Missing {} atomtype in ffnonbonded.itp'.format(self.LA))
 
         print '\nFound {} in forcefield'.format(self.LA)
 
@@ -262,7 +267,8 @@ class AddLinkingAtoms(object):
             else:
                 return v
         for i in self.groups.keys():
-            self.groups[i] = map(lambda x: adjust(self.la_ind[0], len(self.la_ind), x), self.groups[i])
+            self.groups[i] = map(lambda x: adjust(
+                self.la_ind[0], len(self.la_ind), x), self.groups[i])
 
         self.groups[self.group].extend(self.la_ind)
         self.groups['System'].extend(self.la_ind)
@@ -283,7 +289,6 @@ class AddLinkingAtoms(object):
         group = self.groups[self.group]
 
         p = fi.tell()
-
 
         end = re.compile('\[')
         com = re.compile('(;|#)')
@@ -463,7 +468,8 @@ class AddLinkingAtoms(object):
         mass = fl
         comment = pg.Optional(pg.Literal(';') + pg.restOfLine)
 
-        parser = num + atype + resn + resi + aname + cgnr + charge + mass + comment
+        parser = num + atype + resn + resi + aname + \
+            cgnr + charge + mass + comment
 
         alist = list()
         l = fi.readline()
@@ -487,7 +493,8 @@ class AddLinkingAtoms(object):
         if re.match('\[ {} \]'.format(name), l):
             fo.write(l)
         else:
-            raise RuntimeError('Wrong section. {} is not [ {} ]'.format(l, name))
+            raise RuntimeError(
+                'Wrong section. {} is not [ {} ]'.format(l, name))
 
         return True
 
@@ -537,28 +544,6 @@ class AddLinkingAtoms(object):
             raise RuntimeError('Unable to determine forcefield from topology')
         f.seek(0)
         return ff
-
-    def read_atomtypes(self, f):
-        """
-        Reads atomtypes.atp and returns atoms dict
-        """
-        com = re.compile('(;|#)')
-
-        atom = pg.Word(pg.printables)
-        mass = pg.Word(pg.nums + '.').setParseAction(lambda v: float(v[0]))
-        comment = pg.Optional(pg.Literal(';') + pg.restOfLine)
-
-        parser = atom + mass + comment
-
-        atypes = odict()
-        for line in f:
-            if com.match(line.lstrip()):
-                pass
-            elif line.strip():
-                v = parser.parseString(line).asList()
-                atypes[v[0]] = v[1]
-
-        return atypes
 
     def read_nonbonded(self, f):
         """Reads ffnonbonded.itp and store parameters"""
@@ -623,7 +608,8 @@ class AddLinkingAtoms(object):
             print '\n'
             print 'Groups in index file:\n'
             for i, v in enumerate(groups.keys()):
-                print "Group %6d (%16s) has %5d elements" % (i, v, len(groups[v]))
+                print "Group %6d (%16s) has %5d elements" % (
+                    i, v, len(groups[v]))
 
         def resolve_group(groups, i):
             return groups[groups.keys()[i]]
@@ -633,8 +619,8 @@ class AddLinkingAtoms(object):
                 group < 0 or
                 group > len(self.groups) or
                 len(resolve_group(groups, group)) == 0):
-                print_groups()
-                group = int(raw_input("Select QM/MM group: "))
+            print_groups()
+            group = int(raw_input("Select QM/MM group: "))
 
         return group.keys()[group]
 
