@@ -30,13 +30,12 @@
 
 import sys
 import os
-# from parser import *
+import _pmx as _p
 from atom import Atom
 from molecule import Molecule
 from parser import kickOutComments, readSection, parseList
 from collections import OrderedDict
 from ffparser import BondedParser, NBParser, RTPParser
-import _pmx as _p
 
 
 __doc__ = """
