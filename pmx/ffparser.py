@@ -128,9 +128,15 @@ class RTPParser:
                     print >>fp, "%6s  %6s" % (bond[0], bond[1])
             if entr['diheds']:
                 print >>fp, ' [ dihedrals ]'
+
                 for dih in entr['diheds']:
-                    print >>fp, "%6s  %6s  %6s  %6s  %-25s" % (
-                        dih[0], dih[1], dih[2], dih[3], dih[4])
+                    if dih[4] == 9:
+                        print >>fp, "%6s  %6s  %6s  %6s  %1d %s" % (
+                            dih[0], dih[1], dih[2], dih[3], dih[4], dih[5])
+                    else:
+
+                        print >>fp, "%6s  %6s  %6s  %6s  %1d %-s" % (
+                            dih[0], dih[1], dih[2], dih[3], dih[4])
             if entr['improps']:
                 print >>fp, ' [ impropers ]'
                 for dih in entr['improps']:
