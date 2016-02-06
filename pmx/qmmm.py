@@ -1,114 +1,64 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
 
+import sys
 import os
 import os.path
 import re
 import pyparsing as pg
 import numpy as np
-import textwrap
-from collections import OrderedDict as odict
-from pmx import ffparser
+from collections import OrderedDict
+from pmx import Model, ffparser, forcefield2
+from pmx.ndx import IndexGroup, IndexFile
 
 
-class GRO(object):
+class QMsystem(object):
 
-    def __init__(self, fi, fo=None):
-        self.fi = fi
-        self.fo = fo
+    GMXLIB = '/usr/share/gromacs/top'
+    LA = 'LA'  # Type of linking atoms
 
-        self.header = None
-        self.num = None
-        self.atoms = None
-        self.box = None
+    igro = None
+    ogro = None
 
-        self.fmt_header = '{}\n'
-        self.fmt_num = '  {:d}\n'
-        self.fmt_atoms = '{:5d}{:<5s}{:5s}{:5d}{:8.3f}{:8.3f}{:8.3f}\n'
-        self.fmt_box = '{:10.5f}{:10.5f}{:10.5f}\n'
+    itop = None
+    otop = None
 
-        self.parse()
+    indx = None
+    ondx = None
 
-    def parse(self, f=None):
-        """Parses .gro file with coordinates"""
-        if f is None:
-            f = self.fi
-        header = f.readline().strip()
-        num = int(f.readline().strip())
+    system = dict()
+    la_ind = list()
+    group = IndexGroup()
 
-        fl = pg.Word(pg.nums + '.e+-').setParseAction(lambda v: float(v[0]))
-
-        x = fl
-        y = fl
-        z = fl
-
-        parser = x + y + z
-
-        atoms = list()
-        for l in f:
-            try:
-                atom = self.parse_atom(l)
-                atom.extend(parser.parseString(l[20:]).asList())
-                atoms.append(atom)
-            except pg.ParseException:
-                box = parser.parseString(l).asList()
-
-        self.header = header
-        self.num = num
-        self.atoms = atoms
-        self.box = box
-
-    def parse_atom(self, l):
-        try:
-            resi = int(l[:5])
-            resn = l[5:10].strip()
-            atom = l[10:15].strip()
-            anum = int(l[15:20])
-        except (IndexError, ValueError):
-            raise pg.ParseException('Not an atom')
-
-        return([resi, resn, atom, anum])
-
-    def write(self, fo=None):
-        """Writes .gro file with new coordinates"""
-        if fo is None:
-            fo = self.fo
-
-        self.num = len(self.atoms)
-
-        fo.write(self.fmt_header.format(self.header))
-        fo.write(self.fmt_num.format(self.num))
-        for i in range(self.num):
-            a = self.atoms[i]
-            a[3] = i + 1
-            fo.write(self.fmt_atoms.format(*a))
-        fo.write(self.fmt_box.format(*self.box))
-
-
-class AddLinkingAtoms(object):
-
-    def __init__(self, args):
+    def __init__(self, *args, **kwargs):
         """Initialize class instance"""
-        self.LA = 'LA'
         self.args = args
+
+        try:
+            self.igro = Model(kwargs['igro'])
+        except:
+            sys.stderr.write('Unable to open input gro %s' % kwargs['igro'])
+            sys.exit(1)
+
+        try:
+            self.itop = forcefield2.Topology(kwargs['itop'])
+        except:
+            sys.stderr.write('Unable to open input top %s' % kwargs['itop'])
+            sys.exit(1)
+
+        if kwargs['indx']:
+            self.indx = IndexFile(kwargs['indx'])
 
         if 'GMXLIB' in os.environ:
             self.GMXLIB = os.environ['GMXLIB']
-        else:
-            self.GMXLIB = '/usr/share/gromacs/top'
-
-        self.group = None
-        self.la = None
-        self.la_ind = None
 
     def process(self):
         """Main function"""
-        self.bonds2break = self.read_la_list()
-
-        self.groups = self.read_index(self.args.input_index)
-        self.group = self.select_group()
-
-        self.gro = GRO(self.args.input_coordinates)
+        if 'qmsystem' in self.args:
+            self.add_residues(self.args['qmsystem'])
+        else:
+            sys.stderr.write('Empty qmsystem')
+            sys.exit(1)
 
         self.process_topology()
 
@@ -117,7 +67,54 @@ class AddLinkingAtoms(object):
         self.add_la_coordinates()
         self.gro.write(self.args.output_coordinates)
 
-        self.clean()
+    def __add_residues(self, residues):
+        for i in residues.items():
+            resi, atoms = i
+            self.__add_residue(resi, **atoms)
+
+    def __missing_atom(at, resi, resn):
+        sys.stderr.write(
+            'There are no atom %s in residue %d%s') % \
+            (at, resi, resn)
+        sys.exit(1)
+
+    def __add_residue(self, resi, include=None, exclude=None):
+        if include and exclude:
+            sys.stderr.write(
+                'Can not use include and exclude simultaneously')
+            sys.exit(1)
+
+        atoms = list()
+
+        res = self.itop.residues[resi - 1]
+        tatoms = np.array(res.atoms)
+        tnames = map(lambda x: x.name, tatoms)
+
+        tmask = np.zeros(len(tatoms), dtype=bool)
+        tmask.fill(True)
+
+        if include:
+            tmask = np.zeros(len(tatoms), dtype=bool)
+
+            for at in include:
+                try:
+                    aind = tnames.index(at)
+                    tmask[aind] = True
+
+                except ValueError:
+                    self.__missing_atom(at, res.id, res.resname)
+
+        elif exclude:
+
+            for at in exclude:
+                try:
+                    aind = tnames.index(at)
+                    tmask[aind] = False
+
+                except ValueError:
+                    self.__missing_atom(at, res.id, res.resname)
+
+        self.system[resi] = atoms[tmask]
 
     def add_la_coordinates(self):
 
@@ -150,83 +147,65 @@ class AddLinkingAtoms(object):
 #        self.gro.atoms.extend(atoms)
 
     def process_topology(self, fi=None, fo=None):
-        if fi is None:
-            fi = self.args.input_topology
-        if fo is None:
-            fo = self.args.output_topology
 
-        self.check_forcefield(fi)
+        self.check_forcefield()
 
-        with open(os.path.join(self.ff_path, 'ffbonded.itp'), 'r') as f:
-            self.btypes = self.read_bonds(f)
-
-        self.process_header(fi, fo)
-
-        self.check_section_name(fi, fo, 'moleculetype')
-        self.process_moleculetype(fi, fo)
-
-        self.check_section_name(fi, fo, 'atoms')
-        self.atoms = self.process_atoms(fi, fo)
-        self.la_ind, self.la_atoms = self.add_la_atoms(fo)
-
-        self.check_section_name(fi, fo, 'bonds')
         self.process_bonds(fi, fo)
 
         self.add_section_virtual_sites2(fo)
 
-        self.check_section_name(fi, fo, 'pairs')
-        self.process_pairs(fi, fo)
-
-        self.check_section_name(fi, fo, 'angles')
         self.process_angles(fi, fo)
 
-        self.check_section_name(fi, fo, 'dihedrals')
         self.process_dihedrals(fi, fo)
-
-        self.check_section_name(fi, fo, 'dihedrals')
-        self.process_dihedrals(fi, fo)
-
-        self.process_footer(fi, fo)
 
     def check_forcefield(self, f):
         self.ff_name = self.detect_ff(f)
-        if os.path.isdir(self.ff_name):
-            print 'Forcefield {} in current directory'.format(self.ff_name)
-            self.ff_path = self.ff_name
-        elif os.path.isdir(os.path.join(self.GMXLIB, self.ff_name)):
-            print 'Forcefield {0} in {1} directory'.format(
-                self.ff_name, self.GMXLIB)
-            self.ff_path = os.path.join(self.GMXLIB, self.ff_name)
+
+        lpath = self.ff_name
+        gpath = os.path.join(self.GMXLIB, self.ff_name)
+
+        if os.path.isdir(lpath):
+            self.ff_path = lpath
+        elif os.path.isdir(gpath):
+            self.ff_path = gpath
+        else:
+            sys.stderr.write(
+                'Unable to locate directory for {} forcefield'.format(
+                    self.ff_name))
+            sys.exit(1)
+
+        print 'Forcefield {0} in {1} directory'.format(
+            self.ff_name, self.ffpath)
 
         atpfn = os.path.join(self.ff_path, 'atomtypes.atp')
         atypes = ffparser.ATPParser(atpfn)
 
         if self.LA not in atypes.dic:
-            raise TypeError(
+            sys.stderr.write(
                 'Missing {} atomtype in atomtypes.atp'.format(self.LA))
+            sys.stderr.write(
+                'Please, add following string to {}'.format(atpfn))
+            sys.stderr.write(
+                'LA         0.00000  ; QMMM')
+            sys.exit(1)
 
-        with open(os.path.join(self.ff_path, 'ffnonbonded.itp'), 'r') as f:
-            nonbonded = self.read_nonbonded(f)
+        nbfn = os.path.join(self.ff_path, 'ffnonbonded.itp')
+        nonbonded = ffparser.NBParser(nbfn)
 
-        if self.LA not in nonbonded:
-            raise TypeError(
+        if self.LA not in nonbonded.atomtypes:
+            sys.stderr.write(
                 'Missing {} atomtype in ffnonbonded.itp'.format(self.LA))
+            sys.stderr.write(
+                'Please, add following string to {}'.format(nbfn))
+            sys.stderr.write(
+                'LA           0       0.0000  0.0000  A   \
+                0.00000e+00  0.00000e+00')
+            sys.exit(1)
 
-        print '\nFound {} in forcefield'.format(self.LA)
+        sys.stderr.write(
+            'Found {} atomtype in forcefield'.format(self.LA))
 
         return True
-
-    def clean(self):
-        """Close all descriptors and exit"""
-
-        self.args.la_list.close()
-        self.args.input_index.close()
-        self.args.input_topology.close()
-        self.args.input_coordinates.close()
-
-        self.args.output_index.close()
-        self.args.output_topology.close()
-        self.args.output_coordinates.close()
 
     def add_section_virtual_sites2(self, fo):
         """Add section virtual_sites
@@ -250,15 +229,6 @@ class AddLinkingAtoms(object):
 
         return True
 
-    def get_atype(self, a):
-        """Returns atom type"""
-        return self.atoms[a - 1][0]
-
-    def get_ratio(self, ai, aj, atype, htype):
-        new = self.btypes[(atype, htype)][1]
-        old = self.btypes[(self.get_atype(ai), self.get_atype(aj))][1]
-        return(new / old)
-
     def adjust_index(self):
         """Adjust indexes after adding of linking atoms"""
         def adjust(start, offset, v):
@@ -272,16 +242,6 @@ class AddLinkingAtoms(object):
 
         self.groups[self.group].extend(self.la_ind)
         self.groups['System'].extend(self.la_ind)
-
-    def write_index(self, f):
-        """Writes new .ndx file with LA being added"""
-        self.adjust_index()
-        for i in self.groups.keys():
-            f.write('\n[ {} ]\n'.format(i))
-
-            group = ' '.join(map(str, self.groups[i]))
-            group = textwrap.fill(group, 100) + '\n'
-            f.write(group)
 
     def process_dihedrals(self, fi, fo):
         """Comment out dihedrals of QM system"""
@@ -448,46 +408,6 @@ class AddLinkingAtoms(object):
 
         return(la, atoms)
 
-    def process_atoms(self, fi, fo):
-        p = fi.tell()
-
-        end = re.compile('\[')
-        com = re.compile('(;|#)')
-
-        fl = pg.Word(pg.nums + '.e+-').setParseAction(lambda v: float(v[0]))
-        pr = pg.Word(pg.printables)
-        it = pg.Word(pg.nums).setParseAction(lambda v: int(v[0]))
-
-        num = it
-        atype = pr
-        resn = it
-        resi = pr
-        aname = pr
-        cgnr = it
-        charge = fl
-        mass = fl
-        comment = pg.Optional(pg.Literal(';') + pg.restOfLine)
-
-        parser = num + atype + resn + resi + aname + \
-            cgnr + charge + mass + comment
-
-        alist = list()
-        l = fi.readline()
-        while l:
-            if end.match(l.lstrip()):
-                fi.seek(p)
-                break
-            elif com.match(l.strip()):
-                pass
-            elif l.strip():
-                alist.append(parser.parseString(l).asList()[1:8])
-
-            fo.write(l)
-            p = fi.tell()
-            l = fi.readline()
-
-        return alist
-
     def check_section_name(self, fi, fo, name=None):
         l = fi.readline()
         if re.match('\[ {} \]'.format(name), l):
@@ -498,103 +418,16 @@ class AddLinkingAtoms(object):
 
         return True
 
-    def process_pairs(self, fi, fo):
-        """Process [ pairs ] section"""
-        self.copy_stream(fi, fo)
-
-    def process_moleculetype(self, fi, fo):
-        """Process [ moleculetype ] section"""
-        self.copy_stream(fi, fo)
-
-    def process_footer(self, fi, fo):
-        """Reads topology header"""
-        self.copy_stream(fi, fo, ignore=True)
-
-    def process_header(self, fi, fo):
-        """Reads topology header"""
-        self.copy_stream(fi, fo)
-
-    def copy_stream(self, fi, fo, ignore=False):
-        p = fi.tell()
-
-        end = re.compile('\[')
-
-        l = fi.readline()
-        while l:
-            if end.match(l.lstrip()) and not ignore:
-                fi.seek(p)
-                break
-            else:
-                pass
-
-            fo.write(l)
-            p = fi.tell()
-            l = fi.readline()
-
-        return True
-
     def detect_ff(self, f):
         """Reads topology and guesses forcefield path"""
         inc = re.compile('#include')
-        for l in f:
+        for l in self.itop.header:
             if inc.match(l.lstrip()):
                 ff = re.search('"(.*\.ff)', l).group(1)
                 break
         if not ff:
             raise RuntimeError('Unable to determine forcefield from topology')
-        f.seek(0)
         return ff
-
-    def read_nonbonded(self, f):
-        """Reads ffnonbonded.itp and store parameters"""
-        at = re.compile("(\[ atomtypes \]|;)")
-
-        fl = pg.Word(pg.nums + '.e+-').setParseAction(lambda v: float(v[0]))
-        atom = pg.Word(pg.printables)
-        num = pg.Word(pg.nums).setParseAction(lambda v: int(v[0]))
-        mass = fl
-        charge = fl
-        ptype = pg.Word('ABC', exact=1)
-        sigma = fl
-        eps = fl
-        comment = pg.Optional(pg.Literal(';') + pg.restOfLine)
-
-        parser = atom + num + mass + charge + ptype + sigma + eps + comment
-
-        atdict = odict()
-        for line in f:
-            if at.match(line):
-                pass
-            elif line.strip():
-                v = parser.parseString(line).asList()
-                atdict[v[0]] = v[1:7]
-        return atdict
-
-    def read_bonds(self, f):
-        """Reads [ bondtypes ] section from .itp and store parameters"""
-        bt = re.compile("(\[ bondtypes \]|;)")
-        end = re.compile("(\[|#)")
-        bondict = odict()
-
-        fl = pg.Word(pg.nums + '.e+-').setParseAction(lambda v: float(v[0]))
-        atom = pg.Word(pg.printables)
-        func = pg.Word(pg.nums).setParseAction(lambda v: int(v[0]))
-        b0 = fl
-        kb = fl
-        comment = pg.Optional(pg.Literal(';') + pg.restOfLine)
-
-        parser = atom + atom + func + b0 + kb + comment
-
-        for line in f:
-            if bt.match(line.lstrip()):
-                pass
-            elif end.match(line):
-                break
-            elif line.strip():
-                v = parser.parseString(line).asList()
-                bondict[tuple(v[:2])] = v[2:5]
-                bondict[tuple(v[1::-1])] = v[2:5]
-        return bondict
 
     def select_group(self, group=None, groups=None):
 
@@ -623,25 +456,6 @@ class AddLinkingAtoms(object):
             group = int(raw_input("Select QM/MM group: "))
 
         return group.keys()[group]
-
-    def read_index(self, f):
-        """
-        Read *.ndx file and store groups
-        """
-        groups = odict()
-        g = re.compile("\[\s(.*)\s\]")
-        active = None
-        line = f.readline()
-        while line:
-            m = g.search(line)
-            if m:
-                active = m.group(1)
-                groups[active] = list()
-            elif line.strip():
-                tmp = re.sub('\s+', ';', line.strip()).split(';')
-                groups[active].extend(map(int, tmp))
-            line = f.readline()
-        return groups
 
     def read_la_list(self, f=None):
         """
@@ -727,5 +541,5 @@ if __name__ == '__main__':
                         help='Output coordinates file', required=True)
     get_args = parser.parse_args()
 
-    add = AddLinkingAtoms(get_args)
+    add = QMsystem(get_args)
     process = add.process()
