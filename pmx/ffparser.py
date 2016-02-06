@@ -115,6 +115,9 @@ class RTPParser:
             fp = open(out_file, "w")
         else:
             fp = out_file
+
+        self.__write_header(fp)
+
         for key in self.keys:
             entr = self.entries[key]
             print >>fp, '[ %s ]' % key
@@ -126,17 +129,13 @@ class RTPParser:
                 print >>fp, ' [ bonds ]'
                 for bond in entr['bonds']:
                     print >>fp, "%6s  %6s" % (bond[0], bond[1])
+
             if entr['diheds']:
                 print >>fp, ' [ dihedrals ]'
-
                 for dih in entr['diheds']:
-                    if dih[4] == 9:
-                        print >>fp, "%6s  %6s  %6s  %6s  %1d %s" % (
-                            dih[0], dih[1], dih[2], dih[3], dih[4], dih[5])
-                    else:
-
-                        print >>fp, "%6s  %6s  %6s  %6s  %1d %-s" % (
+                        print >>fp, "%6s  %6s  %6s  %6s %-25s" % (
                             dih[0], dih[1], dih[2], dih[3], dih[4])
+
             if entr['improps']:
                 print >>fp, ' [ impropers ]'
                 for dih in entr['improps']:
@@ -147,6 +146,42 @@ class RTPParser:
                         print >>fp, "%6s  %6s  %6s  %6s " % (
                             dih[0], dih[1], dih[2], dih[3])
             print >>fp
+
+    def __write_header(self, fp):
+        header = (
+            '[ bondedtypes ]\n'
+            '; Column 1 : default bondtype\n'
+            ';Column 2 : default angletype\n'
+            ';Column 3 : default proper dihedraltype\n'
+            ';Column 4 : default improper dihedraltype\n'
+            ';Column 5 : This controls the generation of dihedrals from the '
+            'bonding.\n'
+            ';           All possible dihedrals are generated automatically. '
+            'A value of\n'
+            ';           1 here means that all these are retained. A value of\n'
+            ';           0 here requires generated dihedrals be removed if\n'
+            ';             * there are any dihedrals on the same central '
+            'atoms\n'
+            ';               specified in the residue topology, or\n'
+            ';             * there are other identical generated dihedrals\n'
+            ';               sharing the same central atoms, or\n'
+            ';             * there are other generated dihedrals sharing the\n'
+            ';               same central bond that have fewer hydrogen atoms\n'
+            ';Column 6 : number of neighbors to exclude from non-bonded '
+            'interactions\n'
+            ';Column 7 : 1 = generate 1,4 interactions between pairs of'
+            'hydrogen atoms\n'
+            ';           0 = do not generate such\n'
+            ';Column 8 : 1 = remove proper dihedrals if found centered on the '
+            'same\n'
+            ';               bond as an improper dihedral\n'
+            ';           0 = do not generate such\n'
+            ';bonds  angles  dihedrals  impropers all_dihedrals nrexcl HH14 '
+            'RemoveDih\n'
+            '    1       1          9          4        1         3      '
+            '1     0\n'
+            '\n')
+        fp.write(header)
 
     def __check_residue_tree(self, model):
         for c in model.chains:
