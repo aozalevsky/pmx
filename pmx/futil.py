@@ -30,6 +30,7 @@
 
 import os
 import re
+import sys
 import types
 import shutil
 from glob import glob
@@ -177,7 +178,7 @@ def backup_output(fn):
             name = os.path.basename(fn)
             guess = sorted(map(
                 lambda x: int(re.sub(r'#.*\.(\d+)#', r'\1', x)),
-                glob.glob(path + "#" + name + ".*#")))
+                glob(path + "#" + name + ".*#")))
             if not guess:
                 i = 1
             else:
@@ -194,3 +195,9 @@ def backup_output(fn):
         pass
 
     return fn
+
+
+def Error(*args):
+    sys.stderr.write(' '.join(map(str, args)) + '\n')
+    sys.stderr.flush()
+    sys.exit(1)
