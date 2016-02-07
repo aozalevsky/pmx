@@ -29,8 +29,10 @@
 # ----------------------------------------------------------------------
 
 import os
-from glob import glob
+import re
 import types
+import shutil
+from glob import glob
 
 __doc__ = """
 Some (quite useless) functions
@@ -166,3 +168,29 @@ def removeBackups(dir, check=True):
     dir = os.path.abspath(dir) + os.sep
 
     os.path.walk(dir, killBackups, (False, True, True, check))
+
+
+def backup_output(fn):
+    try:
+        if os.stat(fn).st_size:
+            path = os.path.dirname(fn)
+            name = os.path.basename(fn)
+            guess = sorted(map(
+                lambda x: int(re.sub(r'#.*\.(\d+)#', r'\1', x)),
+                glob.glob(path + "#" + name + ".*#")))
+            if not guess:
+                i = 1
+            else:
+                i = guess[-1]
+                if i < 99:
+                    i += 1
+                else:
+                    raise Exception("Too many backups")
+            backup = "#" + name + '.' + str(i) + "#"
+            backup = os.path.join(path, backup)
+            shutil.copy(fn, backup)
+            print "Back Off! I just backed up {0} to {1}".format(fn, backup)
+    except OSError:
+        pass
+
+    return fn
