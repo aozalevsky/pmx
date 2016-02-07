@@ -1,71 +1,124 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
 
-import sys
-import os
-import os.path
-import re
-import pyparsing as pg
+import pmx
+import copy
 import numpy as np
-from collections import OrderedDict
-from pmx import Model, ffparser, forcefield2
+from pmx import Model, forcefield2
 from pmx.ndx import IndexGroup, IndexFile
+from pmx.futil import backup_output, Error
 
 
 class QMsystem(object):
 
     GMXLIB = '/usr/share/gromacs/top'
     LA = 'LA'  # Type of linking atoms
+    breakable_bonds = [
+        ('C', 'N'),
+        ('C', 'CA'),
+        ('CA', 'CB'),
+    ]
 
-    igro = None
-    ogro = None
+    iqm = None
+    iqmfn = None
 
     itop = None
+    itopfn = None
     otop = None
+    otopfn = None
+
+    igro = None
+    igrofn = None
+    ogro = None
+    ogrofn = None
 
     indx = None
+    indxfn = None
     ondx = None
+    ondxfn = None
 
-    system = dict()
-    la_ind = list()
+    system = list()
+    bonds2break = list()
+    vsites2 = list()
     group = IndexGroup()
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+            self,
+            iqmfn=None,
+            itopfn=None,
+            otopfn=None,
+            igrofn=None,
+            ogrofn=None,
+            indxfn=None,
+            ondxfn=None,
+            *args, **kwargs):
         """Initialize class instance"""
-        self.args = args
+        self.iqmfn = iqmfn
+
+        self.itopfn = itopfn
+        self.otopfn = otopfn
+
+        self.igrofn = igrofn
+        self.ogrofn = ogrofn
+
+        self.indxfn = indxfn
+        self.ondxfn = ondxfn
+
+    def __open_inputs(self):
+        try:
+            with open(self.iqmfn, 'r') as f:
+                iqm = eval(f.read())
+            if len(iqm) == 0:
+                Error('Empty qmsystem')
+            self.iqm = iqm
+        except:
+            Error('Unable to qm input %s' % self.iqmfn)
 
         try:
-            self.igro = Model(kwargs['igro'])
+            self.itop = forcefield2.Topology(self.itopfn)
         except:
-            sys.stderr.write('Unable to open input gro %s' % kwargs['igro'])
-            sys.exit(1)
+            Error('Unable to open input top %s' % self.itopfn)
+
+        if not self.otopfn:
+            self.otopfn = self.igrofn.replace('.top', '_qm.top')
 
         try:
-            self.itop = forcefield2.Topology(kwargs['itop'])
+            self.igro = Model(self.igrofn)
         except:
-            sys.stderr.write('Unable to open input top %s' % kwargs['itop'])
-            sys.exit(1)
+            Error('Unable to open input gro %s' % self.igrofn)
 
-        if kwargs['indx']:
-            self.indx = IndexFile(kwargs['indx'])
+        if not self.ogrofn:
+            self.ogrofn = self.igrofn.replace('.gro', '_qm.gro')
 
-        if 'GMXLIB' in os.environ:
-            self.GMXLIB = os.environ['GMXLIB']
+        if self.indxfn:
+            try:
+                self.indx = IndexFile(self.indxfn)
+            except:
+                Error('Unable to open input ndx %s' % self.indxfn)
+
+        else:
+            self.indx = IndexFile()
+            group = IndexGroup(name='System', atoms=self.itop.atoms)
+            self.indx.add_group(group)
+
+        if not self.ondxfn:
+            if self.indxfn:
+                self.ondxfn = self.indxfn.replace('.ndx', '_qm.ndx')
+            else:
+                self.ondxfn = 'qm.ndx'
 
     def process(self):
         """Main function"""
-        if 'qmsystem' in self.args:
-            self.add_residues(self.args['qmsystem'])
-        else:
-            sys.stderr.write('Empty qmsystem')
-            sys.exit(1)
 
-        self.process_topology()
+        self.__open_inputs()
+        self.__add_residues(self.iqm)
+        self.__process_topology()
+        self.__process_coordinates()
+        self.__process_index()
 
-        self.write_index(self.args.output_index)
-
-        self.add_la_coordinates()
-        self.gro.write(self.args.output_coordinates)
+        self.otop.write(self.otopfn)
+        self.ogro.write(self.ogrofn)
+        self.ondx.write(self.ondxfn)
 
     def __add_residues(self, residues):
         for i in residues.items():
@@ -73,18 +126,16 @@ class QMsystem(object):
             self.__add_residue(resi, **atoms)
 
     def __missing_atom(at, resi, resn):
-        sys.stderr.write(
+        Error(
             'There are no atom %s in residue %d%s') % \
             (at, resi, resn)
-        sys.exit(1)
 
     def __add_residue(self, resi, include=None, exclude=None):
         if include and exclude:
-            sys.stderr.write(
-                'Can not use include and exclude simultaneously')
-            sys.exit(1)
-
-        atoms = list()
+            Error(
+                'Can not use include and exclude directives '
+                'simultaneously in residue %d in %s' %
+                (resi, self.iqmfn))
 
         res = self.itop.residues[resi - 1]
         tatoms = np.array(res.atoms)
@@ -114,120 +165,112 @@ class QMsystem(object):
                 except ValueError:
                     self.__missing_atom(at, res.id, res.resname)
 
-        self.system[resi] = atoms[tmask]
+        self.system.extend(tatoms[tmask])
 
-    def add_la_coordinates(self):
+    def __process_coordinates(self):
+        self.ogro = copy.copy(self.igro)
 
-        atoms = list()
-        num = len(self.bonds2break)
+        for vs in self.vsites2:
+            aLA, qm, mm, t, ratio = vs
+            ai = np.array(self.ogro.atoms[qm.id - 1].x)
+            aj = np.array(self.ogro.atoms[mm.id - 1].x)
+            aLA.x = ai + (aj - ai) * ratio
+            self.ogro.atoms.append(aLA)
 
-        for i in range(num):
-
-            atom = list()
-            top = self.la_atoms[i]
-            atom.append(top[2])  # resi
-            atom.append(top[3])  # resn
-            atom.append(top[4])  # aname
-            atom.append(top[0])  # num
-
-            bb = self.bonds2break[i]
-            ain, ajn = bb[:2]
-            ai = np.array(self.gro.atoms[ain - 1][4:])
-            aj = np.array(self.gro.atoms[ajn - 1][4:])
-
-            la = ai + (aj - ai) * self.get_ratio(*bb[:4])
-
-            atom.extend(la)
-            atoms.append(atom)
-        for i in range(num):
-            self.gro.atoms.insert(self.la_ind[i] - 1, atoms[i])
-        for i in range(self.la_ind[-1], len(self.gro.atoms)):
-            print i
-            self.gro.atoms[i][0] += num
-#        self.gro.atoms.extend(atoms)
-
-    def process_topology(self, fi=None, fo=None):
+    def __process_topology(self):
+        self.otop = copy.copy(self.itop)
 
         self.check_forcefield()
 
-        self.process_bonds(fi, fo)
+        self.__process_bonds()
 
-        self.add_section_virtual_sites2(fo)
+        self.__process_angles()
 
-        self.process_angles(fi, fo)
+        self.__process_dihedrals()
 
-        self.process_dihedrals(fi, fo)
+        self.add_virtual_sites2()
 
-    def check_forcefield(self, f):
-        self.ff_name = self.detect_ff(f)
+    def check_forcefield(self):
+        if self.LA not in self.itop.NBParams.atomtypes:
+            Error(
+                """Missing QMMM parameters in forcefield.
+Create file qmmm.itp with following content:
+; New atom and atomtype for QMMM
+LA         0.00000  ; QMMM
 
-        lpath = self.ff_name
-        gpath = os.path.join(self.GMXLIB, self.ff_name)
+[ atomtypes ]
+LA           0       0.0000  0.0000  A                0.00000e+00  0.00000e+00
 
-        if os.path.isdir(lpath):
-            self.ff_path = lpath
-        elif os.path.isdir(gpath):
-            self.ff_path = gpath
-        else:
-            sys.stderr.write(
-                'Unable to locate directory for {} forcefield'.format(
-                    self.ff_name))
-            sys.exit(1)
-
-        print 'Forcefield {0} in {1} directory'.format(
-            self.ff_name, self.ffpath)
-
-        atpfn = os.path.join(self.ff_path, 'atomtypes.atp')
-        atypes = ffparser.ATPParser(atpfn)
-
-        if self.LA not in atypes.dic:
-            sys.stderr.write(
-                'Missing {} atomtype in atomtypes.atp'.format(self.LA))
-            sys.stderr.write(
-                'Please, add following string to {}'.format(atpfn))
-            sys.stderr.write(
-                'LA         0.00000  ; QMMM')
-            sys.exit(1)
-
-        nbfn = os.path.join(self.ff_path, 'ffnonbonded.itp')
-        nonbonded = ffparser.NBParser(nbfn)
-
-        if self.LA not in nonbonded.atomtypes:
-            sys.stderr.write(
-                'Missing {} atomtype in ffnonbonded.itp'.format(self.LA))
-            sys.stderr.write(
-                'Please, add following string to {}'.format(nbfn))
-            sys.stderr.write(
-                'LA           0       0.0000  0.0000  A   \
-                0.00000e+00  0.00000e+00')
-            sys.exit(1)
-
-        sys.stderr.write(
-            'Found {} atomtype in forcefield'.format(self.LA))
+and add it to topology like:
+#include "qmmm.itp" ; QMMM parameters
+""")
 
         return True
 
-    def add_section_virtual_sites2(self, fo):
+    def add_virtual_sites2(self):
         """Add section virtual_sites
         [ virtual_sites2 ]
          LA QMatom MMatom 1 X.XXX
         """
+        vsites2 = list()
 
-        fmt = ['{:5d}', '{:5d}', '{:5d}', '    1', '{:8.3f}', '\n']
-
-        fo.write('\n')
-        fo.write('; Linkage atoms for QM/MM\n')
-        fo.write('[ virtual_sites2 ]\n')
-        for i in range(len(self.la_ind)):
+        for bond in self.bonds2break:
             site = list()
-            site.append(self.la_ind[i])
-            bb = self.bonds2break[i]
-            site.extend(bb[:2])
-            site.append(self.get_ratio(*bb[:4]))
-            fo.write(' '.join(fmt).format(*site))
-        fo.write('\n')
+            ai, aj = bond
+
+            if (ai in self.system and aj not in self.system):
+                qm, mm = ai, aj
+            elif (aj in self.system and ai not in self.system):
+                qm, mm = aj, ai
+            else:
+                Error('Something went wrong with breaking bonds')
+
+            rLA = pmx.Molecule()
+            rLA.id = len(self.otop.residues) + 1
+            rLA.resname = 'XXX'
+            rLA.charge = 0
+
+            aLA = pmx.Atom()
+            aLA.id = len(self.otop.atoms) + 1
+            aLA.atomtype = self.LA
+            aLA.atomtypeB = None
+            aLA.resnr = aLA.id
+            aLA.resname = rLA.resname
+            aLA.name = self.LA
+            aLA.cgnr = aLA.resnr
+            aLA.q = 0.0
+            aLA.m = 0.0
+
+            rLA.atoms.append(aLA)
+
+            self.otop.residues.append(rLA)
+            self.otop.atoms.append(aLA)
+
+            ratio = self.__get_ratio(qm, mm)
+
+            site = [aLA, qm, mm, 1, ratio]
+
+            vsites2.append(site)
+
+        if len(vsites2) > 0:
+            self.vsites2 = vsites2
+            self.otop.virtual_sites2.extend(vsites2)
+            self.otop.has_vsites2 = True
 
         return True
+
+    def __process_index(self):
+        self.ondx = copy.copy(self.indx)
+
+        atoms = list()
+        atoms.extend(self.system)
+        latoms = map(lambda x: x[0], self.vsites2)
+        atoms.extend(latoms)
+
+        group = IndexGroup(name='QM', atoms=atoms)
+
+        self.ondx.add_group(group)
+        self.ondx.dic['System'].ids.extend(map(lambda x: x.id, latoms))
 
     def adjust_index(self):
         """Adjust indexes after adding of linking atoms"""
@@ -243,303 +286,152 @@ class QMsystem(object):
         self.groups[self.group].extend(self.la_ind)
         self.groups['System'].extend(self.la_ind)
 
-    def process_dihedrals(self, fi, fo):
-        """Comment out dihedrals of QM system"""
-
-        group = self.groups[self.group]
-
-        p = fi.tell()
-
-        end = re.compile('\[')
-        com = re.compile('(;|#)')
-
-        limit = 3
-
-        it = pg.Word(pg.nums).setParseAction(lambda v: int(v[0]))
-
-        ai = it
-        aj = it
-        ak = it
-        al = it
-        func = it
-        comment = pg.Optional(pg.Literal(';') + pg.restOfLine)
-
-        parser = ai + aj + ak + al + func + comment
-
-        l = fi.readline()
-        while l:
-            c = 0
-            if end.match(l.lstrip()):
-                fi.seek(p)
-                break
-            elif com.match(l.strip()):
-                pass
-            elif l.strip():
-                atoms = parser.parseString(l).asList()[0:3]
-                for i in atoms:
-                    if i in group:
-                        c += 1
-                if c >= limit:
-                    l = ';' + l
-
-            fo.write(l)
-            p = fi.tell()
-            l = fi.readline()
-
-        return True
-        pass
-
-    def process_angles(self, fi, fo):
+    def __process_angles(self, limit=2):
         """Comment out angles of QM system"""
-        group = self.groups[self.group]
-        p = fi.tell()
+        angles = list()
 
-        end = re.compile('\[')
-        com = re.compile('(;|#)')
-
-        limit = 2
-
-        it = pg.Word(pg.nums).setParseAction(lambda v: int(v[0]))
-
-        ai = it
-        aj = it
-        ak = it
-        func = it
-        comment = pg.Optional(pg.Literal(';') + pg.restOfLine)
-
-        parser = ai + aj + ak + func + comment
-
-        l = fi.readline()
-        while l:
+        for angle in self.itop.angles:
             c = 0
-            if end.match(l.lstrip()):
-                fi.seek(p)
-                break
-            elif com.match(l.strip()):
-                pass
-            elif l.strip():
-                atoms = parser.parseString(l).asList()[0:3]
-                for i in atoms:
-                    if i in group:
-                        c += 1
-                if c >= limit:
-                    l = ';' + l
+            atoms = angle[:3]
 
-            fo.write(l)
-            p = fi.tell()
-            l = fi.readline()
+            for a in atoms:
+                if a in self.system:
+                    c += 1
+            if c < limit:
+                angles.append(angle)
 
-        return True
+        self.otop.angles = angles
 
-    def process_bonds(self, fi, fo):
+    def __process_dihedrals(self, limit=3):
+        """Comment out dihedrals of QM system"""
+        angles = list()
+
+        for angle in self.itop.dihedrals:
+            c = 0
+            atoms = angle[:4]
+
+            for a in atoms:
+                if a in self.system:
+                    c += 1
+            if c < limit:
+                angles.append(angle)
+
+        self.otop.dihedrals = angles
+
+    def __process_bonds(self):
         """Changes bondtype to 5 for all QMatoms"""
-        group = self.groups[self.group]
-        p = fi.tell()
-
-        end = re.compile('\[')
-        com = re.compile('(;|#)')
-
-        fmt = ['{:5d}', '{:5d}', '{:5d}']
-        limit = 2
-
-        it = pg.Word(pg.nums).setParseAction(lambda v: int(v[0]))
-
-        ai = it
-        aj = it
-        func = it
-        comment = pg.Optional(pg.Literal(';') + pg.restOfLine)
-
-        parser = ai + aj + func + comment
-
-        l = fi.readline()
-        while l:
-            c = 0
-            if end.match(l.lstrip()):
-                fi.seek(p)
-                break
-            elif com.match(l.strip()):
-                pass
-            elif l.strip():
-                atoms = parser.parseString(l).asList()[0:2]
-                for i in atoms:
-                    if i in group:
-                        c += 1
-                if c >= limit:
-                    atoms.append(5)
-                    l = ' '.join(fmt).format(*atoms) + ' ; QM system\n'
-
-            fo.write(l)
-            p = fi.tell()
-            l = fi.readline()
-
-        return True
-
-    def add_la_atoms(self, f, atype=None, astart=None, rstart=None, num=None):
-        """Add linking atoms to [ atoms ] section in topology"""
-        if astart is None:
-            astart = len(self.atoms)
-
-        if num is None:
-            num = len(self.bonds2break)
-
-        if atype is None:
-            atype = self.LA
-
-        if rstart is None:
-            rstart = self.atoms[-1][1]
-
-        # Copied from GromacsWrapper
-        fmt = ["{:6d}", "{:>10s}", "{:-6d}", "{:>6s}",
-               "{:>6s}", "{:>6d}",
-               "{:-10.4f}", "{:-10.3f}",
-               ]
-        atoms = list()
-        la = list()
-        f.write(';Linking atoms for QM/MM\n')
-        for i in range(num):
-            c = i + 1
-            la.append(astart + c)
-            atom = [astart + c, atype, rstart + c,
-                    'XXX', atype, astart + c, 0.0, 0.0,
-                    ]
-            atoms.append(atom)
-            astr = ' '.join(fmt).format(*atom)
-            f.write(astr + '\n')
-
-        return(la, atoms)
-
-    def check_section_name(self, fi, fo, name=None):
-        l = fi.readline()
-        if re.match('\[ {} \]'.format(name), l):
-            fo.write(l)
-        else:
-            raise RuntimeError(
-                'Wrong section. {} is not [ {} ]'.format(l, name))
-
-        return True
-
-    def detect_ff(self, f):
-        """Reads topology and guesses forcefield path"""
-        inc = re.compile('#include')
-        for l in self.itop.header:
-            if inc.match(l.lstrip()):
-                ff = re.search('"(.*\.ff)', l).group(1)
-                break
-        if not ff:
-            raise RuntimeError('Unable to determine forcefield from topology')
-        return ff
-
-    def select_group(self, group=None, groups=None):
-
-        if group is None:
-            group = self.group
-
-        if groups is None:
-            groups = self.groups
-
-        def print_groups():
-            print '\n'
-            print 'Groups in index file:\n'
-            for i, v in enumerate(groups.keys()):
-                print "Group %6d (%16s) has %5d elements" % (
-                    i, v, len(groups[v]))
-
-        def resolve_group(groups, i):
-            return groups[groups.keys()[i]]
-
-        while (
-                group is None or
-                group < 0 or
-                group > len(self.groups) or
-                len(resolve_group(groups, group)) == 0):
-            print_groups()
-            group = int(raw_input("Select QM/MM group: "))
-
-        return group.keys()[group]
-
-    def read_la_list(self, f=None):
-        """
-        Reads LA list in format
-        QM MM ; Optional comment
-        """
-        if f is None:
-            f = self.args.la_list
-
-        atype = pg.Word(pg.alphas)
-        it = pg.Word(pg.nums).setParseAction(lambda v: int(v[0]))
-
-        ai = it
-        aj = it
-        aitype = atype
-        htype = atype
-
-        comment = pg.Optional(pg.Literal(';') + pg.restOfLine)
-
-        parser = ai + aj + aitype + htype + comment
 
         bonds = list()
-        for line in f:
-            bonds.append(parser.parseString(line).asList())
+        bonds2break = list()
 
-        if len(bonds) > 0:
-            print 'Found following bonds to breake:'
-            for i in bonds:
-                print '{0} - {1}'.format(*i)
-        else:
-            raise RuntimeError('Empty linking atom list')
+        for bond in self.itop.bonds:
+            ai, aj = bond[:2]
+            t = bond[2]
 
-        return(bonds)
+            if self.__is_qm_bond(ai, aj):
+                t = 5
 
+            elif self.__is_qmmm_bond(ai, aj):
+                if self.__is_breakable_bond(ai.name, aj.name):
+                    t = 5
+                    bonds2break.append((ai, aj))
+                else:
+                    self.__unbreakable_bond(ai, aj)
+
+            bond[2] = t
+            bonds.append(bond)
+
+        self.otop.bonds = bonds
+        self.bonds2break = bonds2break
+
+    def __is_qm_bond(self, ai, aj):
+        result = False
+
+        if ai in self.system:
+            if aj in self.system:
+                result = True
+
+        return result
+
+    def __is_qmmm_bond(self, ai, aj):
+        result = False
+
+        if (ai in self.system and aj not in self.system) or \
+                (aj in self.system and ai not in self.system):
+
+            result = True
+
+        return result
+
+    def __is_breakable_bond(self, ai, aj):
+        result = False
+
+        if (ai, aj) in self.breakable_bonds:
+            result = True
+        elif (aj, ai) in self.breakable_bonds:
+            result = True
+
+        return result
+
+    def __unbreakable_bond(self, ai, aj):
+        Error(
+            'Bond %d (%s) - %d (%s) not in the list of breakable bonds' %
+            (ai.id, ai.name, aj.id, aj.name))
+
+    def __get_ratio(self, ai, aj):
+
+        ratio = None
+
+        for bond in self.itop.BondedParams.bondtypes:
+            if ai.atomtype in bond and aj.atomtype in bond:
+                ratio = 0.1 / bond[3]  # 0.1 because of nm in params
+
+        if ratio is None:
+            Error(
+                'Did not find parameters for breaking bond %d (%s) - %d (%s)' %
+                (ai.id, ai.atomtype, aj.id, aj.atomtype))
+
+        return ratio
 
 if __name__ == '__main__':
-    import glob
     import argparse as ag
-    import shutil
-
-    def backup_output(fn):
-        try:
-            if os.stat(fn).st_size:
-                path = os.path.dirname(fn)
-                name = os.path.basename(fn)
-                guess = sorted(map(
-                    lambda x: int(re.sub(r'#.*\.(\d+)#', r'\1', x)),
-                    glob.glob(path + "#" + name + ".*#")))
-                if not guess:
-                    i = 1
-                else:
-                    i = guess[-1]
-                    if i < 99:
-                        i += 1
-                    else:
-                        raise Exception("Too many backups")
-                backup = "#" + name + '.' + str(i) + "#"
-                backup = os.path.join(path, backup)
-                shutil.copy(fn, backup)
-                print "Back Off! I just backed up {0} to {1}".format(fn, backup)
-        except OSError:
-            pass
-
-        return open(fn, 'w')
 
     parser = ag.ArgumentParser(
         description="""Processes GROMACS topology file (.top)
         and adds linking atoms (LA) for QM/MM.""")
 
-    parser.add_argument('-l', '--la-list', type=ag.FileType('r'),
-                        help='List of bonds to breake', required=True)
-    parser.add_argument('-p', '--input-topology', type=ag.FileType('r'),
-                        help='Input topology', required=True)
-    parser.add_argument('-n', '--input-index', type=ag.FileType('r'),
-                        help='Index file with QM/MM group', required=True)
-    parser.add_argument('-c', '--input-coordinates', type=ag.FileType('r'),
-                        help='Index file with QM/MM group', required=True)
-    parser.add_argument('-o', '--output-topology', type=backup_output,
-                        help='Output PDB file', required=True)
-    parser.add_argument('-x', '--output-index', type=backup_output,
-                        help='Output index file', required=True)
-    parser.add_argument('-y', '--output-coordinates', type=backup_output,
-                        help='Output coordinates file', required=True)
-    get_args = parser.parse_args()
+    parser.add_argument('-q', '--qm-system',
+                        type=str,
+                        help='Input file with description of qm system',
+                        dest='iqmfn',
+                        required=True)
+    parser.add_argument('-p', '--input-topology',
+                        type=str,
+                        help='Input topology',
+                        dest='itopfn',
+                        required=True)
+    parser.add_argument('-c', '--input-coordinates',
+                        type=str,
+                        dest='igrofn',
+                        help='Index file with QM/MM group',
+                        required=True)
+    parser.add_argument('-n', '--input-index',
+                        type=str,
+                        dest='indxfn',
+                        help='Index file')
+    parser.add_argument('-o', '--output-topology',
+                        dest='otopfn',
+                        type=backup_output,
+                        help='Output topology file')
+    parser.add_argument('-y', '--output-coordinates',
+                        type=backup_output,
+                        dest='ogrofn',
+                        help='Output coordinates file')
+    parser.add_argument('-x', '--output-index',
+                        type=backup_output,
+                        dest='ondxfn',
+                        help='Output index file')
+    args = vars(parser.parse_args())
 
-    add = QMsystem(get_args)
-    process = add.process()
+    QMMM = QMsystem(**args)
+    QMMM.process()
