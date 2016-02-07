@@ -83,8 +83,10 @@ class TopolBase:
         self.cmap = []
         self.angles = []
         self.dihedrals = []
+        self.virtual_sites2 = []
         self.virtual_sites3 = []
         self.virtual_sites4 = []
+        self.has_vsites2 = False
         self.has_vsites3 = False
         self.has_vsites4 = False
         self.molecules = []
@@ -112,6 +114,7 @@ class TopolBase:
             self.read_angles(lines)
             self.read_dihedrals(lines)
             self.read_cmap(lines)
+            self.read_vsites2(lines)
             self.read_vsites3(lines)
             self.read_vsites4(lines)
             self.__make_residues()
@@ -401,6 +404,31 @@ class TopolBase:
 #           rest)
 #       print 'length %d' % len(foo)
 
+    def read_vsites2(self, lines):
+        starts = []
+        # dih = []  # Not used
+        for i, line in enumerate(lines):
+            if line.strip().startswith('[ virtual_sites2 ]'):
+                starts.append(i)
+        if starts:
+            self.has_vsites2 = True
+        for s in starts:
+            lst = readSection(lines[s:], '[ virtual_sites2 ]', '[')
+            for line in lst:
+                entr = line.split()
+                idx = [int(x) for x in entr[:2]]
+
+                func = int(entr[3])
+                ratio = float(entr[4])
+                try:
+                    rest = ' '.join(entr[5:])
+                except:
+                    rest = ''
+                self.virtual_sites2.append([self.atoms[idx[0] - 1],
+                                            self.atoms[idx[1] - 1],
+                                            self.atoms[idx[2] - 1],
+                                            func, ratio, rest])
+
     def read_vsites3(self, lines):
         starts = []
         # dih = []  # Not used
@@ -481,6 +509,8 @@ class TopolBase:
             self.write_angles(fp, state=stateBonded)
             self.write_dihedrals(fp, state=stateBonded)
             self.write_cmap(fp)
+            if self.has_vsites2:
+                self.write_vsites2(fp)
             if self.has_vsites3:
                 self.write_vsites3(fp)
             if self.has_vsites4:
@@ -838,6 +868,23 @@ class TopolBase:
                         d[0].id, d[1].id, d[2].id, d[3].id, d[4], bs, bs,
                         d[0].name, d[1].name, d[2].name, d[3].name,
                         d[0].type, d[1].type, d[2].type, d[3].type, A, B)
+
+    def write_vsites2(self, fp):
+        """Add section virtual_sites
+        [ virtual_sites2 ]
+         LA QMatom MMatom 1 X.XXX
+        """
+        print >>fp, '\n [ virtual_sites2 ]'
+        print >>fp, ';  ai    aj    ak    funct            c0'
+        for vs in self.virtual_sites2:
+            if len(vs) == 5:
+                print >>fp, "%6d %6d %6d %4d %8.3f" % (
+                    vs[0].id, vs[1].id, vs[2].id, vs[3], vs[4])
+            else:
+                sys.stderr.write(
+                    'EEK! Something went wrong while writing virtual_sites2!\n')
+                print vs
+                sys.exit(1)
 
     def write_vsites3(self, fp):
         print >>fp, '\n [ virtual_sites3 ]'
