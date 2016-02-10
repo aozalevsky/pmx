@@ -14,8 +14,8 @@ class QMsystem(object):
     GMXLIB = '/usr/share/gromacs/top'
     LA = 'LA'  # Type of linking atoms
     breakable_bonds = [
-        ('C', 'N'),
         ('C', 'CA'),
+        ('N', 'CA'),
         ('CA', 'CB'),
     ]
 
@@ -98,7 +98,7 @@ class QMsystem(object):
 
         else:
             self.indx = IndexFile()
-            group = IndexGroup(name='System', atoms=self.itop.atoms)
+            group = IndexGroup(name='freeze', atoms=self.itop.atoms)
             self.indx.add_group(group)
 
         if not self.ondxfn:
@@ -116,19 +116,19 @@ class QMsystem(object):
         self.__process_coordinates()
         self.__process_index()
 
-        self.otop.write(self.otopfn)
-        self.ogro.write(self.ogrofn)
-        self.ondx.write(self.ondxfn)
+        self.otop.write(backup_output(self.otopfn))
+        self.ogro.write(backup_output(self.ogrofn))
+        self.ondx.write(backup_output(self.ondxfn))
 
     def __add_residues(self, residues):
         for i in residues.items():
             resi, atoms = i
             self.__add_residue(resi, **atoms)
 
-    def __missing_atom(at, resi, resn):
+    def __missing_atom(self, at, res):
         Error(
-            'There are no atom %s in residue %d%s') % \
-            (at, resi, resn)
+            'There is no atom %s in residue %d%s' %
+            (at, res.id, res.resname))
 
     def __add_residue(self, resi, include=None, exclude=None):
         if include and exclude:
@@ -153,7 +153,7 @@ class QMsystem(object):
                     tmask[aind] = True
 
                 except ValueError:
-                    self.__missing_atom(at, res.id, res.resname)
+                    self.__missing_atom(at, res)
 
         elif exclude:
 
@@ -163,7 +163,7 @@ class QMsystem(object):
                     tmask[aind] = False
 
                 except ValueError:
-                    self.__missing_atom(at, res.id, res.resname)
+                    self.__missing_atom(at, res)
 
         self.system.extend(tatoms[tmask])
 
@@ -270,7 +270,7 @@ and add it to topology like:
         group = IndexGroup(name='QM', atoms=atoms)
 
         self.ondx.add_group(group)
-        self.ondx.dic['System'].ids.extend(map(lambda x: x.id, latoms))
+        self.ondx.dic['freeze'].ids.extend(map(lambda x: x.id, latoms))
 
     def adjust_index(self):
         """Adjust indexes after adding of linking atoms"""
@@ -421,14 +421,14 @@ if __name__ == '__main__':
                         help='Index file')
     parser.add_argument('-o', '--output-topology',
                         dest='otopfn',
-                        type=backup_output,
+                        type=str,
                         help='Output topology file')
     parser.add_argument('-y', '--output-coordinates',
-                        type=backup_output,
+                        type=str,
                         dest='ogrofn',
                         help='Output coordinates file')
     parser.add_argument('-x', '--output-index',
-                        type=backup_output,
+                        type=str,
                         dest='ondxfn',
                         help='Output index file')
     args = vars(parser.parse_args())
