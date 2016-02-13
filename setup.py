@@ -73,5 +73,11 @@ setup(
     url='https://github.com/dseeliger/pmx/',
     long_description=long_description,
     packages=['pmx'],
-    ext_modules=cythonize(extenstions)
+    ext_modules=cythonize(extenstions),
+
+    entry_points={
+        'console_scripts': [
+            'pmx_qmmm=pmx.qmmm:run',
+        ],
+    },
 )

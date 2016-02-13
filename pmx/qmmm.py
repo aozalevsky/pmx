@@ -393,7 +393,8 @@ and add it to topology like:
 
         return ratio
 
-if __name__ == '__main__':
+
+def run():
     import argparse as ag
 
     parser = ag.ArgumentParser(
@@ -435,3 +436,6 @@ if __name__ == '__main__':
 
     QMMM = QMsystem(**args)
     QMMM.process()
+
+if __name__ == '__main__':
+    run()
