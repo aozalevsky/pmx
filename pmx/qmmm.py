@@ -247,7 +247,7 @@ and add it to topology like:
             aLA.id = len(self.otop.atoms) + 1
             aLA.atomtype = self.LA
             aLA.atomtypeB = None
-            aLA.resnr = aLA.id
+            aLA.resnr = rLA.id
             aLA.resname = rLA.resname
             aLA.name = self.LA
             aLA.cgnr = aLA.resnr
