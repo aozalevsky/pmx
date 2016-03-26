@@ -181,7 +181,7 @@ class QMsystem(object):
         self.system = list(set(self.system.extend(tatoms[tmask])))
 
     def process_coordinates(self):
-        self.ogro = copy.copy(self.igro)
+        self.ogro = copy.deepcopy(self.igro)
 
         for vs in self.vsites2:
             aLA, qm, mm, t, ratio = vs
@@ -191,7 +191,7 @@ class QMsystem(object):
             self.ogro.atoms.append(aLA)
 
     def process_topology(self):
-        self.otop = copy.copy(self.itop)
+        self.otop = copy.deepcopy(self.itop)
 
         self.check_forcefield()
 
@@ -273,7 +273,7 @@ and add it to topology like:
         return True
 
     def process_index(self):
-        self.ondx = copy.copy(self.indx)
+        self.ondx = copy.deepcopy(self.indx)
 
         atoms = list()
         atoms.extend(self.system)
