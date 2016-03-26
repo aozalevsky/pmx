@@ -14,9 +14,10 @@ class QMsystem(object):
     GMXLIB = '/usr/share/gromacs/top'
     LA = 'LA'  # Type of linking atoms
     breakable_bonds = [
-        ('C', 'CA'),
-        ('N', 'CA'),
-        ('CA', 'CB'),
+        ('N', 'CA'),  # break backbone at beggining
+        ('N', 'CD')  # break backbone at beggining in PRO
+        ('CA', 'CB'),  # break sidechain
+        ('CA', 'C')  # break backbone near end
     ]
 
     iqm = None
