@@ -110,11 +110,23 @@ class QMsystem(object):
     def process(self):
         """Main function"""
 
+        self.read_inputs()
+
+        self.process_all()
+
+        self.write_outputs()
+
+    def read_inputs(self):
         self.__open_inputs()
-        self.__add_residues(self.iqm)
+        self.add_residues(self.iqm)
+
+    def process_all(self):
+
         self.__process_topology()
         self.__process_coordinates()
         self.__process_index()
+
+    def write_outputs(self):
 
         self.otop.write(backup_output(self.otopfn))
         self.ogro.write(backup_output(self.ogrofn))
@@ -130,7 +142,7 @@ class QMsystem(object):
             'There is no atom %s in residue %d%s' %
             (at, res.id, res.resname))
 
-    def __add_residue(self, resi, include=None, exclude=None):
+    def add_residue(self, resi, include=None, exclude=None):
         if include and exclude:
             Error(
                 'Can not use include and exclude directives '
