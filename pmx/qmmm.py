@@ -64,7 +64,7 @@ class QMsystem(object):
         self.indxfn = indxfn
         self.ondxfn = ondxfn
 
-    def __open_inputs(self):
+    def open_inputs(self):
         try:
             with open(self.iqmfn, 'r') as f:
                 iqm = eval(f.read())
@@ -117,14 +117,14 @@ class QMsystem(object):
         self.write_outputs()
 
     def read_inputs(self):
-        self.__open_inputs()
+        self.open_inputs()
         self.add_residues(self.iqm)
 
     def process_all(self):
 
-        self.__process_topology()
-        self.__process_coordinates()
-        self.__process_index()
+        self.process_topology()
+        self.process_coordinates()
+        self.process_index()
 
     def write_outputs(self):
 
@@ -132,10 +132,10 @@ class QMsystem(object):
         self.ogro.write(backup_output(self.ogrofn))
         self.ondx.write(backup_output(self.ondxfn))
 
-    def __add_residues(self, residues):
+    def add_residues(self, residues):
         for i in residues.items():
             resi, atoms = i
-            self.__add_residue(resi, **atoms)
+            self.add_residue(resi, **atoms)
 
     def __missing_atom(self, at, res):
         Error(
@@ -179,7 +179,7 @@ class QMsystem(object):
 
         self.system = list(set(self.system.extend(tatoms[tmask])))
 
-    def __process_coordinates(self):
+    def process_coordinates(self):
         self.ogro = copy.copy(self.igro)
 
         for vs in self.vsites2:
@@ -189,16 +189,16 @@ class QMsystem(object):
             aLA.x = ai + (aj - ai) * ratio
             self.ogro.atoms.append(aLA)
 
-    def __process_topology(self):
+    def process_topology(self):
         self.otop = copy.copy(self.itop)
 
         self.check_forcefield()
 
-        self.__process_bonds()
+        self.process_bonds()
 
-        self.__process_angles()
+        self.process_angles()
 
-        self.__process_dihedrals()
+        self.process_dihedrals()
 
         self.add_virtual_sites2()
 
@@ -271,7 +271,7 @@ and add it to topology like:
 
         return True
 
-    def __process_index(self):
+    def process_index(self):
         self.ondx = copy.copy(self.indx)
 
         atoms = list()
@@ -298,7 +298,7 @@ and add it to topology like:
         self.groups[self.group].extend(self.la_ind)
         self.groups['System'].extend(self.la_ind)
 
-    def __process_angles(self, limit=2):
+    def process_angles(self, limit=2):
         """Comment out angles of QM system"""
         angles = list()
 
@@ -314,7 +314,7 @@ and add it to topology like:
 
         self.otop.angles = angles
 
-    def __process_dihedrals(self, limit=3):
+    def process_dihedrals(self, limit=3):
         """Comment out dihedrals of QM system"""
         angles = list()
 
@@ -330,7 +330,7 @@ and add it to topology like:
 
         self.otop.dihedrals = angles
 
-    def __process_bonds(self):
+    def process_bonds(self):
         """Changes bondtype to 5 for all QMatoms"""
 
         bonds = list()
