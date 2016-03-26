@@ -16,7 +16,7 @@ class QMsystem(object):
     LA = 'LA'  # Type of linking atoms
     breakable_bonds = [
         ('N', 'CA'),  # break backbone at beggining
-        ('N', 'CD')  # break backbone at beggining in PRO
+        ('N', 'CD'),  # break backbone at beggining in PRO
         ('CA', 'CB'),  # break sidechain
         ('CA', 'C')  # break backbone near end
     ]
