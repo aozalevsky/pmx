@@ -27,22 +27,24 @@
 # CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 # CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 # ----------------------------------------------------------------------
-__doc__="""
+
+# from numpy import *
+import random
+from atom import Atom
+from geometry import Rotation
+import library
+import copy as cp
+import _pmx
+# import _gridns
+import sys
+
+__doc__ = """
 This module contains the Atomselection class. It contains methods
 that are inherited to the Molecule, Chain and Model classes.
 Take a look there for details...
 
 
 """
-import sys
-from numpy import *
-import random
-from atom import *
-from geometry import Rotation
-import library
-import copy as cp
-import _pmx
-#import _gridns
 
 XX = 0
 YY = 1
@@ -52,32 +54,32 @@ ZZ = 2
 class Atomselection:
     """ Basic class to handle sets of atoms. Atoms are stored
     in a list <atoms>"""
-    
+
     def __init__(self, **kwargs):
         self.atoms = []
         self.unity = 'A'
         for key, val in kwargs.items():
-            setattr(self,key,val)
+            setattr(self, key, val)
 
-    def writePDB(self,fname,title="",nr=1):
+    def writePDB(self, fname, title="", nr=1):
 
-        fp = open(fname,'w')
+        fp = open(fname, 'w')
         if not title:
-            if hasattr(self,"title"):
+            if hasattr(self, "title"):
                 title = self.title
             else:
-                title = str(self.__class__)+' '+str(self)
+                title = str(self.__class__) + ' ' + str(self)
 
-        header = 'TITLE    '+title
+        header = 'TITLE    ' + title
         print >>fp, header
         print >>fp, 'MODEL%5d' % nr
-        if not hasattr(self,"box"):
-            self.box = [ [0,0,0], [0,0,0], [0,0,0] ]
-        if self.box[XX][XX]*self.box[YY][YY]*self.box[ZZ][ZZ] != 0:
-            box_line = _pmx.box_as_cryst1( self.box )
+        if not hasattr(self, "box"):
+            self.box = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        if self.box[XX][XX] * self.box[YY][YY] * self.box[ZZ][ZZ] != 0:
+            box_line = _pmx.box_as_cryst1(self.box)
             print >>fp, box_line
         for atom in self.atoms:
-            if( len(atom.name) > 4): # too long atom name
+            if(len(atom.name) > 4):  # too long atom name
                 foo = cp.deepcopy(atom)
                 foo.name = foo.name[:4]
                 print >>fp, foo
@@ -86,126 +88,138 @@ class Atomselection:
         print >>fp, 'ENDMDL'
         fp.close()
 
-
-    def writeGRO( self, filename, title = ''):
-        fp = open(filename,'w')
-        if self.unity == 'nm': fac = 1.
-        else: fac = 0.1
+    def writeGRO(self, filename, title=''):
+        fp = open(filename, 'w')
+        if self.unity == 'nm':
+            fac = 1.
+        else:
+            fac = 0.1
         if not title:
-            if hasattr(self,"title"):
+            if hasattr(self, "title"):
                 title = self.title
             else:
-                title = str(self.__class__)+' '+str(self)
+                title = str(self.__class__) + ' ' + str(self)
         print >>fp, title
         print >>fp, "%5d" % len(self.atoms)
-        if self.atoms[0].v[0] != 0.000 : bVel = True
-        else: bVel = False
+        if self.atoms[0].v[0] != 0.000:
+            bVel = True
+        else:
+            bVel = False
         if bVel:
             gro_format = "%8.3f%8.3f%8.3f%8.4f%8.4f%8.4f"
         else:
             gro_format = "%8.3f%8.3f%8.3f"
         for atom in self.atoms:
-            resid = (atom.resnr)%100000
-            at_id = (atom.id)%100000
+            resid = (atom.resnr) % 100000
+            at_id = (atom.id) % 100000
             ff = "%5d%-5.5s%5.5s%5d" % (resid, atom.resname, atom.name, at_id)
             if bVel:
-                ff+=gro_format % (atom.x[XX]*fac, atom.x[YY]*fac, atom.x[ZZ]*fac,
-                                  atom.v[XX], atom.v[YY], atom.v[ZZ])
+                ff += gro_format % (
+                    atom.x[XX] * fac,
+                    atom.x[YY] * fac,
+                    atom.x[ZZ] * fac,
+                    atom.v[XX], atom.v[YY], atom.v[ZZ])
             else:
-                ff+=gro_format % (atom.x[XX]*fac, atom.x[YY]*fac, atom.x[ZZ]*fac )
+                ff += gro_format % (atom.x[XX] * fac,
+                                    atom.x[YY] * fac, atom.x[ZZ] * fac)
             print >>fp, ff
 
-        if not hasattr(self,"box"):
-            self.box = [ [0,0,0], [0,0,0], [0,0,0] ]
+        if not hasattr(self, "box"):
+            self.box = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
         if self.box[XX][YY] or self.box[XX][ZZ] or self.box[YY][XX] or \
-               self.box[YY][ZZ] or self.box[ZZ][XX] or self.box[ZZ][YY]:
+                self.box[YY][ZZ] or self.box[ZZ][XX] or self.box[ZZ][YY]:
             bTric = False
             ff = "%10.5f%10.5f%10.5f%10.5f%10.5f%10.5f%10.5f%10.5f%10.5f"
         else:
             bTric = True
             ff = "%10.5f%10.5f%10.5f"
         if bTric:
-            print >>fp, ff % (self.box[XX][XX],self.box[YY][YY],self.box[ZZ][ZZ])
+            print >>fp, ff % (self.box[XX][XX], self.box[
+                              YY][YY], self.box[ZZ][ZZ])
         else:
-            print >>fp, ff % (self.box[XX][XX],self.box[YY][YY],self.box[ZZ][ZZ],
-                              self.box[XX][YY],self.box[XX][ZZ],self.box[YY][XX],
-                              self.box[YY][ZZ],self.box[ZZ][XX],self.box[ZZ][YY])
+            print >>fp, ff % (
+                self.box[XX][XX],
+                self.box[YY][YY],
+                self.box[ZZ][ZZ],
+                self.box[XX][YY],
+                self.box[XX][ZZ],
+                self.box[YY][XX],
+                self.box[YY][ZZ],
+                self.box[ZZ][XX],
+                self.box[ZZ][YY])
+
         fp.close()
 
-    def write(self,fn, title = '', nr = 1):
+    def write(self, fn, title='', nr=1):
         ext = fn.split('.')[-1]
         if ext == 'pdb':
-            self.writePDB( fn, title, nr )
+            self.writePDB(fn, title, nr)
         elif ext == 'gro':
-            self.writeGRO( fn, title )
+            self.writeGRO(fn, title)
         else:
             print >>sys.stderr, 'pmx_Error_> Can only write pdb or gro!'
             sys.exit(1)
 
-
-            
-    def com(self,vector_only=False):
+    def com(self, vector_only=False):
         """move atoms to center of mass or return vector only"""
         for atom in self.atoms:
             if atom.m == 0:
                 print >>sys.stderr, " Warning: Atom has zero mass: setting mass to 1."
                 atom.m = 1.
-        x = sum(map(lambda a: a.x[0]*a.m, self.atoms))
-        y = sum(map(lambda a: a.x[1]*a.m, self.atoms))
-        z = sum(map(lambda a: a.x[2]*a.m, self.atoms))
+        x = sum(map(lambda a: a.x[0] * a.m, self.atoms))
+        y = sum(map(lambda a: a.x[1] * a.m, self.atoms))
+        z = sum(map(lambda a: a.x[2] * a.m, self.atoms))
         M = sum(map(lambda a: a.m, self.atoms))
-        x/=M
-        y/=M
-        z/=M
+        x /= M
+        y /= M
+        z /= M
         if vector_only:
-            return [x,y,z]
+            return [x, y, z]
         else:
             for atom in self.atoms:
-                atom.x[0]-=x
-                atom.x[1]-=y
-                atom.x[2]-=z
-        
+                atom.x[0] -= x
+                atom.x[1] -= y
+                atom.x[2] -= z
 
-
-    def atomlistFromTop(self,topDic):
+    def atomlistFromTop(self, topDic):
         """ return a list of atom objects
         found in topDic"""
-        self.atoms=[]
+        self.atoms = []
         for idx in topDic['atoms'].keys():
-            at=Atom().atomFromTop(topDic,idx)
+            at = Atom().atomFromTop(topDic, idx)
             self.atoms.append(at)
         return self
 
-
     def renumber_atoms(self, start=1):
         for i, atom in enumerate(self.atoms):
-            if not hasattr(atom,"orig_id") or atom.orig_id == 0: atom.orig_id = atom.id
-            atom.id = i+1
+            if not hasattr(atom, "orig_id") or atom.orig_id == 0:
+                atom.orig_id = atom.id
+            atom.id = i + 1
 
     def a2nm(self):
         if self.unity == 'nm':
             return
         for atom in self.atoms:
-            atom.x[0]*=.1
-            atom.x[1]*=.1
-            atom.x[2]*=.1
+            atom.x[0] *= .1
+            atom.x[1] *= .1
+            atom.x[2] *= .1
             atom.unity = 'nm'
         self.unity = 'nm'
-        
+
     def nm2a(self):
         if self.unity == 'A':
             return
         for atom in self.atoms:
-            atom.x[0]*=10.
-            atom.x[1]*=10.
-            atom.x[2]*=10.
+            atom.x[0] *= 10.
+            atom.x[1] *= 10.
+            atom.x[2] *= 10.
             atom.unity = 'A'
         self.unity = 'A'
-        
+
     def get_long_name(self):
         for atom in self.atoms:
             atom.make_long_name()
-            
+
     def get_symbol(self):
         for atom in self.atoms:
             atom.get_symbol()
@@ -214,29 +228,43 @@ class Atomselection:
         for atom in self.atoms:
             atom.get_order()
 
-
     def max_crd(self):
         x = map(lambda a: a.x[0], self.atoms)
         y = map(lambda a: a.x[1], self.atoms)
         z = map(lambda a: a.x[2], self.atoms)
-        return (min(x),max(x)),(min(y),max(y)),(min(z),max(z))
+        return (min(x), max(x)), (min(y), max(y)), (min(z), max(z))
 
-    def search_neighbors(self, cutoff = 8., build_bonds = True ):
+    def search_neighbors(self, cutoff=8., build_bonds=True):
         changed = False
         if self.unity == 'nm':
             changed = True
             self.nm2a()
-        _pmx.search_neighbors(self.atoms, cutoff, build_bonds )
-    
-    
+        _pmx.search_neighbors(self.atoms, cutoff, build_bonds)
+
+    def get_byres():
+        pass
+
+    def search_within(self, allatoms, select1, select2, cutoff=5., how='byres'):
+        changed = False
+        if self.unity == 'nm':
+            changed = True
+            self.nm2a()
+
+        atoms = list()
+
+        for a in group1:
+            for b in group2:
+                if _pmx.distance(a, b) <= cutoff:
+                    atoms.append(b)
+
+        return atoms
 
     def coords(self):
         return map(lambda a: a.x, self.atoms)
 
-
-    def fetch_atoms(self,key,how='byname',wildcard=False,inv=False):
+    def fetch_atoms(self, key, how='byname', wildcard=False, inv=False):
         result = []
-        if not hasattr(key,"append"):
+        if not hasattr(key, "append"):
             key = [key]
         if how == 'byname':
             for atom in self.atoms:
@@ -266,8 +294,6 @@ class Atomselection:
         else:
             return result
 
-
-
     def get_b13(self):
         for atom in self.atoms:
             for at2 in atom.bonds:
@@ -281,37 +307,35 @@ class Atomselection:
             for at2 in atom.b13:
                 for at3 in at2.bonds:
                     if atom.id > at3.id and at3 not in \
-                           atom.bonds+atom.b13:
+                            atom.bonds + atom.b13:
                         atom.b14.append(at3)
                         at3.b14.append(atom)
 
-
     def translate(self, vec):
         for atom in self.atoms:
-            atom.x[0]+=vec[0]
-            atom.x[1]+=vec[1]
-            atom.x[2]+=vec[2]
-            
+            atom.x[0] += vec[0]
+            atom.x[1] += vec[1]
+            atom.x[2] += vec[2]
 
     def random_rotation(self):
-        vec = self.com(vector_only = True)
+        vec = self.com(vector_only=True)
         self.com()
-        r = Rotation([0,0,0],[1,0,0])  # x-rot
-        phi = random.uniform(0.,360.)
+        r = Rotation([0, 0, 0], [1, 0, 0])  # x-rot
+        phi = random.uniform(0., 360.)
         for atom in self.atoms:
-            atom.x = r.apply(atom.x,phi)
-        r = Rotation([0,0,0],[0,1,0])  # y-rot
-        phi = random.uniform(0.,360.)
+            atom.x = r.apply(atom.x, phi)
+        r = Rotation([0, 0, 0], [0, 1, 0])  # y-rot
+        phi = random.uniform(0., 360.)
         for atom in self.atoms:
-            atom.x = r.apply(atom.x,phi)
-        r = Rotation([0,0,0],[0,0,1])  # z-rot
-        phi = random.uniform(0.,360.)
+            atom.x = r.apply(atom.x, phi)
+        r = Rotation([0, 0, 0], [0, 0, 1])  # z-rot
+        phi = random.uniform(0., 360.)
         for atom in self.atoms:
-            atom.x = r.apply(atom.x,phi)
+            atom.x = r.apply(atom.x, phi)
         for atom in self.atoms:
-            atom.x[0]+=vec[0]
-            atom.x[1]+=vec[1]
-            atom.x[2]+=vec[2]
+            atom.x[0] += vec[0]
+            atom.x[1] += vec[1]
+            atom.x[2] += vec[2]
 
     def make_mol2_bondlist(self):
         lst = []
@@ -326,19 +350,15 @@ class Atomselection:
             for t1, t2, tp in bt:
                 if (at1.atype == t1 and at2.atype == t2) or \
                    (at1.atype == t2 and at2.atype == t1):
-                    newl.append((at1,at2,tp))
+                    newl.append((at1, at2, tp))
                     check = True
             if not check:
                 print 'bondtype %s-%s defaults to 1' % (at1.atype, at2.atype)
-                newl.append((at1,at2,'1'))
+                newl.append((at1, at2, '1'))
         self.bondlist = newl
-                                
+
     def get_by_id(self, lst):
         atlst = []
         for idx in lst:
-            atlst.append(self.atoms[idx-1])
+            atlst.append(self.atoms[idx - 1])
         return atlst
-    
-            
-
-
