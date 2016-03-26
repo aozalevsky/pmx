@@ -394,9 +394,14 @@ and add it to topology like:
 
         ratio = None
 
+        abond = (ai.atomtype, aj.atomtype)
+
         for bond in self.itop.BondedParams.bondtypes:
-            if ai.atomtype in bond and aj.atomtype in bond:
-                ratio = 0.1 / bond[3]  # 0.1 because of nm in params
+            bondt1 = (bond[0], bond[1])
+            bondt2 = (bond[0], bond[1])
+
+            if abond == bondt1 or abond == bondt2:
+                    ratio = 0.1 / bond[3]  # 0.1 because of nm in params
 
         if ratio is None:
             Error(
