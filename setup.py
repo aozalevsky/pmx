@@ -29,6 +29,8 @@
 # ----------------------------------------------------------------------
 
 from os import path
+from os.path import join as pj
+
 # Always prefer setuptools over distutils
 from setuptools import setup
 # For extension managements
@@ -37,26 +39,32 @@ from Cython.Build import cythonize
 
 here = path.abspath(path.dirname(__file__))
 
-pmx = Extension('pmx/_pmx',
+pmx = Extension(pj('pmx', '_pmx'),
                 libraries=['m'],
-                include_dirs=['src/pmx'],
-                sources=['src/pmx/Geometry.c', 'src/pmx/wrap_Geometry.c',
-                         'src/pmx/init.c', 'src/pmx/Energy.c']
+                include_dirs=[pj('src', 'pmx')],
+                sources=[
+                    pj('src', 'pmx', 'Geometry.c'),
+                    pj('src', 'pmx', 'wrap_Geometry.c'),
+                    pj('src', 'pmx', 'init.c'),
+                    pj('src', 'pmx', 'Energy.c')]
                 )
 
 xdrio = Extension('pmx/_xdrio',
                   libraries=['m'],
-                  include_dirs=['src/xdr'],
-                  sources=['src/xdr/xdrfile.c', 'src/xdr/xdrfile_trr.c',
-                           'src/xdr/xdrfile_xtc.c']
+                  include_dirs=[pj('src', 'xdr')],
+                  sources=[
+                    pj('src', 'xdr', 'xdrfile.c'),
+                    pj('src', 'xdr', 'xdrfile_trr.c'),
+                    pj('src', 'xdr', 'xdrfile_xtc.c')]
                   )
 
-## cpp_test = Extension('pmx/_cpp_test',
-##                    libraries = ['m'],
-##                    include_dirs = ['src'],
-##                    sources = ['src/cpp_test.cpp']
+# cpp_test = Extension('pmx/_cpp_test',
+#                    libraries = ['m'],
+#                    include_dirs = ['src'],
+#                    sources = ['src/cpp_test.cpp']
 
-##                  )
+#                  )
+
 extenstions = [pmx, xdrio]
 
 with open('README.rst', 'r') as f:
@@ -64,7 +72,7 @@ with open('README.rst', 'r') as f:
 
 setup(
     name='pmx',
-    version='1.1.1dev',
+    version='1.1.2dev',
     description='Python Toolbox structure file editing and \
         writing simulation setup/analysis tools',
     author='Arthur Zalevsky <aozalevsky.fbb.msu.ru>, \
@@ -73,6 +81,17 @@ setup(
     url='https://github.com/dseeliger/pmx/',
     long_description=long_description,
     packages=['pmx'],
+    data_files=[
+        (pj('pmx', 'data'),
+            [
+                pj('data', 'bbdep.pkl'),
+                pj('data', 'bp.pkl'),
+                pj('data', 'ffamber99sb.rtp'),
+                pj('data', 'ffamber99sbbon.itp'),
+                pj('data', 'ffamber99sbnb.itp'),
+                pj('data', 'blosum62_new.mat'),
+                ])],
+
     ext_modules=cythonize(extenstions),
 
     entry_points={
