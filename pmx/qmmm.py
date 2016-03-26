@@ -177,7 +177,7 @@ class QMsystem(object):
                 except ValueError:
                     self.__missing_atom(at, res)
 
-        self.system.extend(tatoms[tmask])
+        self.system = list(set(self.system.extend(tatoms[tmask])))
 
     def __process_coordinates(self):
         self.ogro = copy.copy(self.igro)
