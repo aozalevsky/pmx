@@ -37,6 +37,7 @@ import copy as cp
 import _pmx
 # import _gridns
 import sys
+import numpy as np
 
 __doc__ = """
 This module contains the Atomselection class. It contains methods
@@ -52,6 +53,7 @@ ZZ = 2
 
 
 class Atomselection:
+
     """ Basic class to handle sets of atoms. Atoms are stored
     in a list <atoms>"""
 
@@ -241,24 +243,6 @@ class Atomselection:
             self.nm2a()
         _pmx.search_neighbors(self.atoms, cutoff, build_bonds)
 
-    def get_byres():
-        pass
-
-    def search_within(self, allatoms, select1, select2, cutoff=5., how='byres'):
-        changed = False
-        if self.unity == 'nm':
-            changed = True
-            self.nm2a()
-
-        atoms = list()
-
-        for a in group1:
-            for b in group2:
-                if _pmx.distance(a, b) <= cutoff:
-                    atoms.append(b)
-
-        return atoms
-
     def coords(self):
         return map(lambda a: a.x, self.atoms)
 
@@ -285,6 +269,11 @@ class Atomselection:
                 for k in key:
                     if atom.id == int(k):
                         result.append(atom)
+
+        elif how == 'byresnr':
+            for k in key:
+                result.extend(self.get_bresnr(k, self.atoms))
+
         if inv:
             r = []
             for atom in self.atoms:
@@ -293,6 +282,14 @@ class Atomselection:
             return r
         else:
             return result
+
+    @staticmethod
+    def get_bresnr(resn, allatoms):
+        allatoms = np.array(allatoms)
+        aresnrs = np.array(map(lambda x: x.resnr, allatoms))
+        result = allatoms[np.where(aresnrs == resn)]
+
+        return list(result)
 
     def get_b13(self):
         for atom in self.atoms:
@@ -362,3 +359,24 @@ class Atomselection:
         for idx in lst:
             atlst.append(self.atoms[idx - 1])
         return atlst
+
+    @staticmethod
+    def select_within(grp1, grp2, cutoff=0.35):
+        tatoms = list()
+
+        for ai in grp1:
+            for aj in grp2:
+                if _pmx.distance(ai, aj) <= cutoff:
+                    tatoms.append(aj)
+
+        tatoms = list(set(tatoms))
+
+        return tatoms
+
+    def expand_byres(self, allatoms):
+        resnrs = list(set(map(lambda x: x.resnr, self.atoms)))
+        tallatoms = Atomselection(atoms=allatoms)
+
+        tatoms = tallatoms.fetch_atoms(resnrs, how='byresnr')
+
+        return tatoms
