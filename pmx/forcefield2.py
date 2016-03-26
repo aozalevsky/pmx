@@ -994,6 +994,25 @@ class TopolBase:
         return round(qB, 3)
 
 
+    def is_bond(self, ai, aj):
+        isbond = False
+
+        a = (ai.id, aj.id)
+
+        for bond in self.bonds:
+            bi, bj = bond[:2]
+            b1 = (bi.id, bj.id)
+            b2 = (bj.id, bi.id)
+
+            if a == b1 or a == b2:
+                isbond = True
+                break
+
+        return isbond
+
+
+
+
 # ========================================================================
 class ITPFile(TopolBase):
 

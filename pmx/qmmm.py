@@ -7,6 +7,7 @@ import numpy as np
 from pmx import Model, forcefield2
 from pmx.ndx import IndexGroup, IndexFile
 from pmx.futil import backup_output, Error
+from pmx.atomselection import Atomselection
 
 
 class QMsystem(object):
@@ -42,6 +43,8 @@ class QMsystem(object):
     bonds2break = list()
     vsites2 = list()
     group = IndexGroup()
+
+    mmsystem = list()
 
     def __init__(
             self,
@@ -410,6 +413,57 @@ and add it to topology like:
                 (ai.id, ai.atomtype, aj.id, aj.atomtype))
 
         return ratio
+
+    def expand_terminus(self, res):
+        result = list()
+
+        anames = set(map(lambda x: x.atomname, res))
+
+        if 'N' in anames:
+            result = self.expand_n_terminus(res)
+
+        if 'C' in anames:
+            result = self.expand_c_terminus(res)
+
+        return result
+
+    def expand_n_terminus(self, res):
+        result = list()
+
+        resnr = res[0].resnr
+
+        mmsys = Atomselection(atoms=self.mmsystem)
+        preres = Atomselection(
+            atoms=mmsys.fetch_atoms(resnr - 1, how='byresnr'))
+
+        N = Atomselection(atoms=res).fetch_atoms(['N'])[0]
+
+        C = preres.fetch_atoms(['C'])[0]
+
+        if self.itop.is_bond(N, C):
+            result = preres.fetch_atoms(['C', 'O'])
+
+        result.extend(res)
+
+        return result
+
+    def expand_c_terminus(self, res):
+        result = res
+
+        resnr = res[-1].resnr
+
+        C = Atomselection(atoms=res).fetch_atoms(['C'])[-1]
+
+        mmsys = Atomselection(atoms=self.mmsystem)
+        preres = Atomselection(
+            atoms=mmsys.fetch_atoms(resnr + 1, how='byresnr'))
+
+        N = preres.fetch_atoms(['N'])[0]
+
+        if self.itop.is_bond(C, N):
+            result.extend(preres.fetch_atoms(['N', 'H']))
+
+        return result
 
 
 def run():
