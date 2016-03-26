@@ -398,7 +398,7 @@ and add it to topology like:
 
         for bond in self.itop.BondedParams.bondtypes:
             bondt1 = (bond[0], bond[1])
-            bondt2 = (bond[0], bond[1])
+            bondt2 = (bond[1], bond[0])
 
             if abond == bondt1 or abond == bondt2:
                     ratio = 0.1 / bond[3]  # 0.1 because of nm in params
