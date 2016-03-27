@@ -38,6 +38,8 @@ import _pmx
 # import _gridns
 import sys
 import numpy as np
+import scipy.spatial
+
 
 __doc__ = """
 This module contains the Atomselection class. It contains methods
@@ -362,16 +364,18 @@ class Atomselection:
 
     @staticmethod
     def select_within(grp1, grp2, cutoff=0.35):
-        tatoms = list()
+        grp1c = np.array(map(lambda x: x.x, grp1))
+        grp2c = np.array(map(lambda x: x.x, grp2))
+        ngrp2 = np.array(grp2)
 
-        for ai in grp1:
-            for aj in grp2:
-                if _pmx.distance(ai, aj) <= cutoff:
-                    tatoms.append(aj)
+        tree = scipy.spatial.KDTree(grp2c)
 
-        tatoms = list(set(tatoms))
+        res = tree.query(grp1c, len(grp2c), distance_upper_bound=cutoff)
+        result = np.unique(ngrp2[res[1][np.isfinite(res[0])]])
 
-        return tatoms
+        result = sorted(result, key=lambda x: x.id)
+
+        return list(result)
 
     def expand_byres(self, allatoms):
         resnrs = list(set(map(lambda x: x.resnr, self.atoms)))
