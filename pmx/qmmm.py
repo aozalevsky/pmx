@@ -414,16 +414,36 @@ and add it to topology like:
 
         return ratio
 
-    def expand_terminus(self, res):
-        result = list()
+    def expand_ends(self, atoms):
+        result = atoms
 
-        anames = set(map(lambda x: x.atomname, res))
+        resnrs = list(set(map(lambda x: x.resnr, atoms)))
+
+        for i in resnrs:
+            tatoms = Atomselection(atoms=atoms).fetch_atoms(i, how='byresnr')
+            tresult = self.expand_terminus(tatoms)
+            result.extend(tresult)
+
+        result = list(set(result))
+        result = sorted(result, key=lambda x: x.id)
+
+        return result
+
+    def expand_terminus(self, res):
+        result = res
+
+        anames = set(map(lambda x: x.name, res))
 
         if 'N' in anames:
-            result = self.expand_n_terminus(res)
+            tresult = self.expand_n_terminus(res)
+            result.extend(tresult)
 
         if 'C' in anames:
-            result = self.expand_c_terminus(res)
+            tresult = self.expand_c_terminus(res)
+            result.extend(tresult)
+
+        result = list(set(result))
+        result = sorted(result, key=lambda x: x.id)
 
         return result
 

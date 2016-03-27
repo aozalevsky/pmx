@@ -64,6 +64,8 @@ class Atomselection:
         self.unity = 'A'
         for key, val in kwargs.items():
             setattr(self, key, val)
+        self.backbone = [
+            'N', 'H', 'CA', 'HA', 'C', 'O', 'OC1', 'OC2', 'H1', 'H2', 'H3']
 
     def writePDB(self, fname, title="", nr=1):
 
@@ -381,6 +383,51 @@ class Atomselection:
         resnrs = list(set(map(lambda x: x.resnr, self.atoms)))
         tallatoms = Atomselection(atoms=allatoms)
 
-        tatoms = tallatoms.fetch_atoms(resnrs, how='byresnr')
+        result = tallatoms.fetch_atoms(resnrs, how='byresnr')
+        result = sorted(result, key=lambda x: x.id)
 
-        return tatoms
+        return result
+
+    def expand_byres_minimal(self, allatoms):
+        result = list()
+        tallatoms = Atomselection(atoms=allatoms)
+
+        resnrs = list(set(map(lambda x: x.resnr, self.atoms)))
+
+        for i in resnrs:
+            ttatoms = Atomselection(
+                atoms=Atomselection(
+                    atoms=self.atoms).fetch_atoms(i, how='byresnr'))
+
+            backmask = np.array(
+                map(self.is_backbone, ttatoms.atoms),
+                dtype=np.bool)
+
+            if np.alltrue(backmask):
+                tresult = ttatoms.expand_byres(
+                    tallatoms.fetch_atoms(self.backbone))
+
+            elif np.any(backmask):
+                tresult = ttatoms.expand_byres(allatoms)
+
+            elif np.alltrue(np.invert(backmask)):
+                tresult = ttatoms.expand_byres(allatoms)
+                sidemask = np.invert(
+                    np.array(
+                        map(self.is_backbone, tresult),
+                        dtype=np.bool))
+                tresult = np.array(tresult)[sidemask]
+
+            result.extend(tresult)
+
+        result = sorted(result, key=lambda x: x.id)
+
+        return list(result)
+
+    def is_backbone(self, atom):
+        isbackbone = False
+
+        if atom.name in self.backbone:
+            isbackbone = True
+
+        return isbackbone
