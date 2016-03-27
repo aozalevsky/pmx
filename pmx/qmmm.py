@@ -4,10 +4,12 @@
 import pmx
 import copy
 import numpy as np
-from pmx import Model, forcefield2
+from pmx import forcefield2
+from .model import Model
+
 from pmx.ndx import IndexGroup, IndexFile
 from pmx.futil import backup_output, Error
-from pmx.atomselection import Atomselection
+from .atomselection import Atomselection
 
 
 class QMsystem(object):
