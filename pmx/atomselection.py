@@ -65,7 +65,19 @@ class Atomselection:
         for key, val in kwargs.items():
             setattr(self, key, val)
         self.backbone = [
-            'N', 'H', 'CA', 'HA', 'C', 'O', 'OC1', 'OC2', 'H1', 'H2', 'H3']
+            'N3', 'H1', 'H2', 'H3',
+            'N', 'H',
+            'CA', 'HA', 'HA1', 'HA2',  # add HA1, HA2 from GLY
+            'C', 'O',
+            'OC1', 'OC2']
+
+        self.terminal = [
+            'N3', 'H1', 'H2', 'H3',
+            'OC1', 'OC2']
+
+        # self.backbone = [
+        #     'N3', 'H1', 'H2', 'H3', 'N', 'H', 'CA', 'HA', 'HA1',
+        #     'HA2', 'C', 'O', 'OC1', 'OC2']
 
     def writePDB(self, fname, title="", nr=1):
 
@@ -269,10 +281,12 @@ class Atomselection:
                     if atom.symbol == k:
                         result.append(atom)
         elif how == 'byid':
-            for atom in self.atoms:
-                for k in key:
-                    if atom.id == int(k):
-                        result.append(atom)
+            atoms = np.array(self.atoms)
+            atid = np.array(map(lambda x: x.id, self.atoms))
+
+            for k in key:
+                ind = np.where(atid == int(k))
+                result.extend(atoms[ind])
 
         elif how == 'byresnr':
             for k in key:
@@ -383,10 +397,16 @@ class Atomselection:
         resnrs = list(set(map(lambda x: x.resnr, self.atoms)))
         tallatoms = Atomselection(atoms=allatoms)
 
-        result = tallatoms.fetch_atoms(resnrs, how='byresnr')
+        result = list(set(tallatoms.fetch_atoms(resnrs, how='byresnr')))
         result = sorted(result, key=lambda x: x.id)
 
         return result
+
+    def is_terminal(self, atoms):
+        terminal = np.any(
+            map(lambda x: x.name in self.terminal, atoms))
+
+        return terminal
 
     def expand_byres_minimal(self, allatoms):
         result = list()
@@ -399,27 +419,39 @@ class Atomselection:
                 atoms=Atomselection(
                     atoms=self.atoms).fetch_atoms(i, how='byresnr'))
 
-            backmask = np.array(
-                map(self.is_backbone, ttatoms.atoms),
-                dtype=np.bool)
+            if ttatoms.atoms[0].resname in library._protein_residues:
 
-            if np.alltrue(backmask):
-                tresult = ttatoms.expand_byres(
-                    tallatoms.fetch_atoms(self.backbone))
+                backmask = np.array(
+                    map(self.is_backbone, ttatoms.atoms),
+                    dtype=np.bool)
 
-            elif np.any(backmask):
+                if np.alltrue(backmask):
+
+                    tresult = ttatoms.expand_byres(allatoms)
+
+                    if self.is_terminal(tresult):
+                        pass
+                    else:
+                        tresult = ttatoms.expand_byres(
+                            tallatoms.fetch_atoms(self.backbone))
+
+                elif np.any(backmask):
+                    tresult = ttatoms.expand_byres(allatoms)
+
+                elif np.alltrue(np.invert(backmask)):
+                    tresult = ttatoms.expand_byres(allatoms)
+                    sidemask = np.invert(
+                        np.array(
+                            map(self.is_backbone, tresult),
+                            dtype=np.bool))
+                    tresult = np.array(tresult)[sidemask]
+
+            else:
                 tresult = ttatoms.expand_byres(allatoms)
-
-            elif np.alltrue(np.invert(backmask)):
-                tresult = ttatoms.expand_byres(allatoms)
-                sidemask = np.invert(
-                    np.array(
-                        map(self.is_backbone, tresult),
-                        dtype=np.bool))
-                tresult = np.array(tresult)[sidemask]
 
             result.extend(tresult)
 
+        result = list(set(result))
         result = sorted(result, key=lambda x: x.id)
 
         return list(result)
