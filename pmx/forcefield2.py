@@ -416,7 +416,7 @@ class TopolBase:
             lst = readSection(lines[s:], '[ virtual_sites2 ]', '[')
             for line in lst:
                 entr = line.split()
-                idx = [int(x) for x in entr[:2]]
+                idx = [int(x) for x in entr[:3]]
 
                 func = int(entr[3])
                 ratio = float(entr[4])
@@ -745,14 +745,16 @@ class TopolBase:
                     if ang[3] == 1:
                         print >>fp, '%6d %6d %6d %6d %14.6f %14.6f \
                             %14.6f %14.6f ; %s %s %s' % \
-                            (ang[0].id, ang[1].id, ang[2].id, ang[3], ang[4][1],
+                            (ang[
+                                0].id, ang[1].id, ang[2].id, ang[3], ang[4][1],
                              ang[4][2], ang[5][1], ang[5][2], ang[0].name,
                              ang[1].name, ang[2].name)
 
                     elif ang[3] == 5:
                         print >>fp, '%6d %6d %6d %6d %14.6f %14.6f %14.6f \
                             %14.6f %14.6f %14.6f %14.6f %14.6f ; %s %s %s' % \
-                            (ang[0].id, ang[1].id, ang[2].id, ang[3], ang[4][1],
+                            (ang[
+                                0].id, ang[1].id, ang[2].id, ang[3], ang[4][1],
                              ang[4][2], ang[4][3], ang[4][4], ang[5][1],
                              ang[5][2], ang[5][3], ang[5][4],
                              ang[0].name, ang[1].name, ang[2].name)
@@ -763,14 +765,16 @@ class TopolBase:
                     if ang[3] == 1:
                         print >>fp, '%6d %6d %6d %6d %14.6f %14.6f \
                             %14.6f %14.6f ; %s %s %s' % \
-                            (ang[0].id, ang[1].id, ang[2].id, ang[3], ang[4][1],
+                            (ang[
+                                0].id, ang[1].id, ang[2].id, ang[3], ang[4][1],
                              ang[4][2], ang[4][1], ang[4][2], ang[0].name,
                              ang[1].name, ang[2].name)
 
                     elif ang[3] == 5:
                         print >>fp, '%6d %6d %6d %6d %14.6f %14.6f %14.6f \
                             %14.6f %14.6f %14.6f %14.6f %14.6f ; %s %s %s' % \
-                            (ang[0].id, ang[1].id, ang[2].id, ang[3], ang[4][1],
+                            (ang[
+                                0].id, ang[1].id, ang[2].id, ang[3], ang[4][1],
                              ang[4][2], ang[4][3], ang[4][4], ang[4][1],
                              ang[4][2], ang[4][3], ang[4][4],
                              ang[0].name, ang[1].name, ang[2].name)
@@ -781,13 +785,15 @@ class TopolBase:
                     if ang[3] == 1:
                         print >>fp, '%6d %6d %6d %6d %14.6f %14.6f %14.6f \
                             %14.6f ; %s %s %s' % \
-                            (ang[0].id, ang[1].id, ang[2].id, ang[3], ang[5][1],
+                            (ang[
+                                0].id, ang[1].id, ang[2].id, ang[3], ang[5][1],
                              ang[5][2], ang[5][1], ang[5][2], ang[0].name,
                              ang[1].name, ang[2].name)
                     elif ang[3] == 5:
                         print >>fp, '%6d %6d %6d %6d %14.6f %14.6f %14.6f \
                             %14.6f %14.6f %14.6f %14.6f %14.6f ; %s %s %s' % \
-                            (ang[0].id, ang[1].id, ang[2].id, ang[3], ang[5][1],
+                            (ang[
+                                0].id, ang[1].id, ang[2].id, ang[3], ang[5][1],
                              ang[5][2], ang[5][3], ang[5][4], ang[5][1],
                              ang[5][2], ang[5][3], ang[5][4],
                              ang[0].name, ang[1].name, ang[2].name)
@@ -993,7 +999,6 @@ class TopolBase:
                 qB += atom.q
         return round(qB, 3)
 
-
     def is_bond(self, ai, aj):
         isbond = False
 
@@ -1011,8 +1016,6 @@ class TopolBase:
         return isbond
 
 
-
-
 # ========================================================================
 class ITPFile(TopolBase):
 
@@ -1028,6 +1031,7 @@ class Topology(TopolBase):
     # def __init__(self, filename, topfile = None, assign_types = True,
     # cpp_path = [os.environ.get('GMXDATA')+'/top'], cpp_defs = [], version =
     # 'old', ff = 'amber' ):
+
     def __init__(
         self, filename,
         topfile=None, assign_types=True,
@@ -1097,9 +1101,8 @@ class Topology(TopolBase):
                 continue
             else:
                 at1, at2, at3, at4, func, dih = d
-                param = self.BondedParams.get_dihedral_param(at1.type, at2.type,
-                                                             at3.type, at4.type,
-                                                             func)
+                param = self.BondedParams.get_dihedral_param(
+                    at1.type, at2.type, at3.type, at4.type, func)
                 if param is None:
                     print 'Error! No dihedral parameters found! \
                         (%s-%s-%s-%s)' % \
