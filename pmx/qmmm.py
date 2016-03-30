@@ -10,6 +10,7 @@ from .model import Model
 from pmx.ndx import IndexGroup, IndexFile
 from pmx.futil import backup_output, Error
 from .atomselection import Atomselection
+from collections import OrderedDict as OD
 
 
 class QMsystem(object):
@@ -22,6 +23,21 @@ class QMsystem(object):
         ('CA', 'CB'),  # break sidechain
         ('CA', 'C')  # break backbone near end
     ]
+
+    sol_ions = [
+        'SOL',
+        'NA',
+        'CL',
+        'K'
+    ]
+
+    sol_ions_type = {
+        'OW': {'type': 'OW', 'mass': 16.00000, 'charge': -0.834},
+        'HW1': {'type': 'HW', 'mass': 1.00800, 'charge': 0.417},
+        'HW2': {'type': 'HW', 'mass': 1.00800, 'charge': 0.417},
+        'NA': {'type': 'Na', 'mass': 22.99, 'charge': 1.0000},
+        'NA': {'type': 'Cl', 'mass': 35.45, 'charge': -1.0000},
+    }
 
     iqm = None
     iqmfn = None
@@ -104,8 +120,6 @@ class QMsystem(object):
 
         else:
             self.indx = IndexFile()
-            group = IndexGroup(name='freeze', atoms=self.itop.atoms)
-            self.indx.add_group(group)
 
         if not self.ondxfn:
             if self.indxfn:
@@ -118,7 +132,7 @@ class QMsystem(object):
 
         self.read_inputs()
 
-        self.process_all()
+        self.process_manual()
 
         self.write_outputs()
 
@@ -126,11 +140,16 @@ class QMsystem(object):
         self.open_inputs()
         self.add_residues(self.iqm)
 
-    def process_all(self):
+    def init_outs(self):
+        self.otop = copy.deepcopy(self.itop)
+        self.ogro = copy.deepcopy(self.igro)
+        self.ondx = copy.deepcopy(self.indx)
 
+    def process_manual(self):
+
+        self.refine_system()
+        self.init_outs()
         self.process_topology()
-        self.process_coordinates()
-        self.process_index()
 
     def write_outputs(self):
 
@@ -185,28 +204,43 @@ class QMsystem(object):
 
         self.system = list(set(self.system.extend(tatoms[tmask])))
 
-    def process_coordinates(self):
-        self.ogro = copy.deepcopy(self.igro)
+    def check_qm_system(self):
+        print len(self.system)
+        print len(set(self.system))
 
-        for vs in self.vsites2:
-            aLA, qm, mm, t, ratio = vs
-            ai = np.array(self.ogro.atoms[qm.id - 1].x)
-            aj = np.array(self.ogro.atoms[mm.id - 1].x)
-            aLA.x = ai + (aj - ai) * ratio
-            self.ogro.atoms.append(aLA)
+    def get_system_charge(self, atoms=None):
+        if not atoms:
+            atoms = self.system
+
+        ratoms = Atomselection(atoms=atoms).expand_byres(self.igro.atoms)
+        tratoms = self.swap_gro2top_ids(ratoms, self.itop.atoms)
+
+        fcharge = sum((map(lambda x: x.q, tratoms)))
+        icharge = int(fcharge)
+        if np.isclose(fcharge, icharge, rtol=1e-03):
+            return icharge
+        else:
+            Error('QM charge %.6f is not roundable' % fcharge)
 
     def process_topology(self):
-        self.otop = copy.deepcopy(self.itop)
 
         self.check_forcefield()
-
         self.process_bonds()
-
         self.process_angles()
-
         self.process_dihedrals()
-
         self.add_virtual_sites2()
+        self.swap_waters()
+        self.process_index()
+
+    def refine_system(self):
+
+        self.system_raw = copy.deepcopy(self.system)
+        self.charge = self.get_system_charge(self.system_raw)
+        self.system = self.expand_ends(self.system)
+        self.system = self.swap_gro2top_ids(self.system, self.itop.atoms)
+
+        print 'Total size of QM system: %d; Charge: %d' % (
+            len(self.system), self.charge)
 
     def check_forcefield(self):
         if self.LA not in self.itop.NBParams.atomtypes:
@@ -225,13 +259,40 @@ and add it to topology like:
 
         return True
 
+    def strip_vsites2(self):
+        if self.otop.has_vsites2:
+            pass
+        else:
+            return
+
+        tops = Atomselection(atoms=self.itop.atoms)
+        gros = Atomselection(atoms=self.igro.atoms)
+
+        gro = gros.fetch_atoms('LA', inv=True)
+        new = Model(atoms=gro)
+        self.ogro.atoms = new.atoms
+
+        top = tops.fetch_atoms('LA', inv=True)
+        new = Model(atoms=top)
+        self.otop.atoms = new.atoms
+
+        lacount = len(self.itop.atoms) - len(self.otop.atoms)
+
+        self.otop.virtual_sites2 = []
+        self.otop.has_vsites2 = False
+
+        print 'Stripped previous LA atoms: %d' % lacount
+
     def add_virtual_sites2(self):
         """Add section virtual_sites
         [ virtual_sites2 ]
          LA QMatom MMatom 1 X.XXX
         """
+        self.strip_vsites2()
+
         vsites2 = list()
 
+        count = 0
         for bond in self.bonds2break:
             site = list()
             ai, aj = bond
@@ -243,52 +304,90 @@ and add it to topology like:
             else:
                 Error('Something went wrong with breaking bonds')
 
-            rLA = pmx.Molecule()
-            rLA.id = len(self.otop.residues) + 1
-            rLA.resname = 'XXX'
-            rLA.charge = 0
-
             aLA = pmx.Atom()
-            aLA.id = len(self.otop.atoms) + 1
+            aLA.id = len(self.otop.atoms) + count
+            aLA.cgnr = aLA.id
             aLA.atomtype = self.LA
             aLA.atomtypeB = None
-            aLA.resnr = rLA.id
-            aLA.resname = rLA.resname
             aLA.name = self.LA
-            aLA.cgnr = aLA.resnr
             aLA.q = 0.0
             aLA.m = 0.0
-
-            rLA.atoms.append(aLA)
-
-            self.otop.residues.append(rLA)
-            self.otop.atoms.append(aLA)
+            aLA.resname = 'XXX'
+            aLA.resnr = len(self.otop.residues) + count
 
             ratio = self.__get_ratio(qm, mm)
+
+            ai = np.array(self.ogro.atoms[qm.id - 1].x)
+            aj = np.array(self.ogro.atoms[mm.id - 1].x)
+            aLA.x = ai + (aj - ai) * ratio
 
             site = [aLA, qm, mm, 1, ratio]
 
             vsites2.append(site)
 
+            count += 1
+
+        print 'Total new virtual sites: ', len(vsites2)
+
         if len(vsites2) > 0:
             self.vsites2 = vsites2
-            self.otop.virtual_sites2.extend(vsites2)
+
+            # strip old vsites2
+            # self.otop.virtual_sites2.extend(vsites2)
+            self.otop.virtual_sites2 = vsites2
             self.otop.has_vsites2 = True
+
+            self.update_atoms(map(lambda x: x[0], vsites2))
 
         return True
 
-    def process_index(self):
-        self.ondx = copy.deepcopy(self.indx)
+    def update_atoms(self, atoms):
 
+        start = len(self.otop.atoms)
+        l = len(atoms)
+
+        newtop_atoms = self.otop.atoms
+        newtop_atoms.extend(atoms)
+        newtop = Model(atoms=newtop_atoms)
+
+        newgro_atoms = self.ogro.atoms[:start]
+        newgro_atoms.extend(atoms)
+        newgro_atoms.extend(self.ogro.atoms[start:])
+        newgro = Model(atoms=newgro_atoms)
+
+        self.otop.atoms = newtop.atoms
+        self.ogro.atoms = newgro.atoms
+
+        return range(start + 1, start + 1 + l)
+
+    def process_index(self):
         atoms = list()
         atoms.extend(self.system)
         latoms = map(lambda x: x[0], self.vsites2)
         atoms.extend(latoms)
 
-        group = IndexGroup(name='QM', atoms=atoms)
+        group_qm = IndexGroup(name='QM', atoms=atoms)
 
-        self.ondx.add_group(group)
-        self.ondx.dic['freeze'].ids.extend(map(lambda x: x.id, latoms))
+        if 'QM' in self.ondx.dic:
+            self.ondx.delete_group('QM')
+
+        self.ondx.add_group(group_qm)
+
+        group_freeze = IndexGroup(name='freeze', atoms=self.otop.atoms)
+
+        if 'freeze' in self.ondx.dic:
+            self.ondx.delete_group('freeze')
+
+        self.ondx.add_group(group_freeze)
+
+        group_sol_and_ions = IndexGroup(
+            name='Water_and_ions',
+            atoms=self.ogro.atoms[len(self.otop.atoms):])
+
+        if 'Water_and_ions' in self.ondx.dic:
+            self.ondx.delete_group('Water_and_ions')
+
+        self.ondx.add_group(group_sol_and_ions)
 
     def adjust_index(self):
         """Adjust indexes after adding of linking atoms"""
@@ -308,13 +407,12 @@ and add it to topology like:
         """Comment out angles of QM system"""
         angles = list()
 
-        for angle in self.itop.angles:
-            c = 0
-            atoms = angle[:3]
+        sys = set(self.system)
 
-            for a in atoms:
-                if a in self.system:
-                    c += 1
+        for angle in self.itop.angles:
+            atoms = angle[:3]
+            c = len(set.intersection(sys, atoms))
+
             if c < limit:
                 angles.append(angle)
 
@@ -324,13 +422,12 @@ and add it to topology like:
         """Comment out dihedrals of QM system"""
         angles = list()
 
-        for angle in self.itop.dihedrals:
-            c = 0
-            atoms = angle[:4]
+        sys = set(self.system)
 
-            for a in atoms:
-                if a in self.system:
-                    c += 1
+        for angle in self.itop.dihedrals:
+            atoms = angle[:4]
+            c = len(set.intersection(sys, atoms))
+
             if c < limit:
                 angles.append(angle)
 
@@ -407,7 +504,7 @@ and add it to topology like:
             bondt2 = (bond[1], bond[0])
 
             if abond == bondt1 or abond == bondt2:
-                    ratio = 0.1 / bond[3]  # 0.1 because of nm in params
+                ratio = 0.1 / bond[3]  # 0.1 because of nm in params
 
         if ratio is None:
             Error(
@@ -438,11 +535,13 @@ and add it to topology like:
 
         if 'N' in anames:
             tresult = self.expand_n_terminus(res)
-            result.extend(tresult)
+            if tresult:
+                result.extend(tresult)
 
         if 'C' in anames:
             tresult = self.expand_c_terminus(res)
-            result.extend(tresult)
+            if tresult:
+                result.extend(tresult)
 
         result = list(set(result))
         result = sorted(result, key=lambda x: x.id)
@@ -454,7 +553,7 @@ and add it to topology like:
 
         resnr = res[0].resnr
 
-        mmsys = Atomselection(atoms=self.mmsystem)
+        mmsys = Atomselection(atoms=self.itop.atoms)
         preres = Atomselection(
             atoms=mmsys.fetch_atoms(resnr - 1, how='byresnr'))
 
@@ -476,7 +575,7 @@ and add it to topology like:
 
         C = Atomselection(atoms=res).fetch_atoms(['C'])[-1]
 
-        mmsys = Atomselection(atoms=self.mmsystem)
+        mmsys = Atomselection(atoms=self.itop.atoms)
         preres = Atomselection(
             atoms=mmsys.fetch_atoms(resnr + 1, how='byresnr'))
 
@@ -486,6 +585,80 @@ and add it to topology like:
             result.extend(preres.fetch_atoms(['N', 'H']))
 
         return result
+
+    def swap_waters(self):
+        res = OD(map(lambda x: (x.resnr, x.resname), self.system))
+
+        if len(set.intersection(set(self.sol_ions), set(res.values()))) > 0:
+            pass
+        else:
+            return
+
+        ogro = self.ogro
+
+        sogro = Atomselection(atoms=ogro.atoms)
+
+        res2top = []
+        molecules = OD(self.otop.molecules)
+
+        for k, v in res.items():
+            if v in self.sol_ions:
+                res2top.append(k)
+                molecules[v] -= 1
+
+        self.otop.molecules = map(list, molecules.items())
+
+        a2top = sogro.fetch_atoms(res2top, how='byresnr')
+
+        for i in range(len(a2top)):
+            a2top[i] = self.assign_sol_ions_type(a2top[i])
+
+        a2top_inv = sogro.fetch_atoms(res2top, how='byresnr', inv=True)
+
+        self.ogro.atoms = a2top_inv
+        self.update_atoms(a2top)
+
+        print 'Found water and/or ions in QM system. Total: %d' % len(a2top)
+
+    def assign_sol_ions_type(self, a):
+
+        a.atomtype = self.sol_ions_type[a.name]['type']
+        a.cgnr = 1
+        a.atomtypeB = None
+        a.q = self.sol_ions_type[a.name]['charge']
+        a.m = self.sol_ions_type[a.name]['mass']
+
+        return a
+
+    @staticmethod
+    def swap_gro2top_ids(gro, top):
+        tops = Atomselection(atoms=top)
+        gros = Atomselection(atoms=gro)
+
+        swap = tops.fetch_atoms(
+            map(lambda x: x.id, gro), how='byid')
+
+        add_swap = gros.fetch_atoms(
+            map(lambda x: x.id, swap), how='byid', inv=True)
+
+        if add_swap:
+            swap.extend(add_swap)
+
+        return swap
+
+    def dump_qmsystem(self, fname):
+        res = OD(map(lambda x: (x.resnr, x.resname), self.system))
+        syss = Atomselection(atoms=self.system)
+
+        line = "# QM system\n{\n"
+        for i in res.keys():
+            atoms = syss.fetch_atoms(i, how='byresnr')
+            aname = map(lambda x: x.name, atoms)
+            line += "    # %d %s\n" % (i, res[i])
+            line += "    %d: {'include': %s},\n\n" % (i, aname.__repr__())
+        line += '}'
+        with open(fname, 'w') as f:
+            f.write(line)
 
 
 def run():
