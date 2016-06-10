@@ -189,7 +189,7 @@ def backup_output(fn):
                     raise Exception("Too many backups")
             backup = "#" + name + '.' + str(i) + "#"
             backup = os.path.join(path, backup)
-            shutil.copy(fn, backup)
+            shutil.move(fn, backup)
             print "Back Off! I just backed up {0} to {1}".format(fn, backup)
     except OSError:
         pass
