@@ -35,8 +35,10 @@ import library
 from rotamer import _aa_chi
 from geometry import Rotation
 from atom import Atom
-from atomselection import Atomselection
-from parser import readSection, readUntil, parseList
+# from atomselection import Atomselection
+
+from atomselection import *
+from parser import readSection, parseList
 
 __doc__ = """
 This module contains the Molecule class. It allows modifications
