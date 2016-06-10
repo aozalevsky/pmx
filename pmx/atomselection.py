@@ -292,6 +292,10 @@ class Atomselection:
             for k in key:
                 result.extend(self.get_bresnr(k, self.atoms))
 
+        elif how == 'byresname':
+            for k in key:
+                result.extend(self.get_bresname(k, self.atoms))
+
         if inv:
             r = []
             for atom in self.atoms:
@@ -308,6 +312,15 @@ class Atomselection:
         result = allatoms[np.where(aresnrs == resn)]
 
         return list(result)
+
+    @staticmethod
+    def get_bresname(resname, allatoms):
+        allatoms = np.array(allatoms)
+        aresnrs = np.array(map(lambda x: x.resname, allatoms))
+        result = allatoms[np.where(aresnrs == resname)]
+
+        return list(result)
+
 
     def get_b13(self):
         for atom in self.atoms:
