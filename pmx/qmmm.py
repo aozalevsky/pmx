@@ -25,10 +25,11 @@ class QMsystem(object):
     ]
 
     sol_ions = [
+        'HOH',
         'SOL',
         'NA',
         'CL',
-        'K'
+        'K',
     ]
 
     sol_ions_type = {
@@ -36,7 +37,8 @@ class QMsystem(object):
         'HW1': {'type': 'HW', 'mass': 1.00800, 'charge': 0.417},
         'HW2': {'type': 'HW', 'mass': 1.00800, 'charge': 0.417},
         'NA': {'type': 'Na', 'mass': 22.99, 'charge': 1.0000},
-        'NA': {'type': 'Cl', 'mass': 35.45, 'charge': -1.0000},
+        'K': {'type': 'K', 'mass': 39.10, 'charge': 1.0000},
+        'CL': {'type': 'Cl', 'mass': 35.45, 'charge': -1.0000},
     }
 
     iqm = None
