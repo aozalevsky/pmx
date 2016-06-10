@@ -64,7 +64,7 @@ class QMsystem(object):
     vsites2 = list()
     group = IndexGroup()
 
-    mmsystem = list()
+    refine = False
 
     def __init__(
             self,
@@ -75,6 +75,7 @@ class QMsystem(object):
             ogrofn=None,
             indxfn=None,
             ondxfn=None,
+            refine=False,
             *args, **kwargs):
         """Initialize class instance"""
         self.iqmfn = iqmfn
@@ -87,6 +88,8 @@ class QMsystem(object):
 
         self.indxfn = indxfn
         self.ondxfn = ondxfn
+
+        self.refine = refine
 
     def open_inputs(self):
         try:
@@ -129,12 +132,20 @@ class QMsystem(object):
             else:
                 self.ondxfn = 'qm.ndx'
 
-    def process(self):
+    def process(self, refine=False):
         """Main function"""
 
         self.read_inputs()
 
-        self.process_manual()
+        if refine or self.refine:
+            self.refine_system()
+
+        self.main_job()
+
+    def main_job(self):
+        self.init_outputs()
+
+        self.process_topology()
 
         self.write_outputs()
 
@@ -142,16 +153,10 @@ class QMsystem(object):
         self.open_inputs()
         self.add_residues(self.iqm)
 
-    def init_outs(self):
-        self.otop = copy.deepcopy(self.itop)
-        self.ogro = copy.deepcopy(self.igro)
-        self.ondx = copy.deepcopy(self.indx)
-
-    def process_manual(self):
-
-        self.refine_system()
-        self.init_outs()
-        self.process_topology()
+    def init_outputs(self):
+        self.otop = self.itop
+        self.ogro = self.igro
+        self.ondx = self.indx
 
     def write_outputs(self):
 
@@ -207,21 +212,29 @@ class QMsystem(object):
         self.system = list(set(self.system.extend(tatoms[tmask])))
 
     def check_qm_system(self):
-        print len(self.system)
-        print len(set(self.system))
+
+        print(len(self.system))
+        print(len(set(self.system)))
 
     def get_system_charge(self, atoms=None):
         if not atoms:
             atoms = self.system
 
-        ratoms = Atomselection(atoms=atoms).expand_byres(self.igro.atoms)
-        tratoms = self.swap_gro2top_ids(ratoms, self.itop.atoms)
+        satoms = pmx.atomselection.Atomselection(atoms=atoms)
 
-        fcharge = sum((map(lambda x: x.q, tratoms)))
-        icharge = int(fcharge)
+        atoms = satoms.fetch_atoms(satoms.backbone, inv=True)
+
+        satoms = pmx.atomselection.Atomselection(atoms=atoms)
+        atoms = satoms.expand_byres(self.igro.atoms)
+
+        atoms = self.swap_gro2top_ids(atoms, self.itop.atoms)
+
+        fcharge = sum((map(lambda x: x.q, atoms)))
+        icharge = int(round(fcharge))
         if np.isclose(fcharge, icharge, rtol=1e-03):
             return icharge
         else:
+            print(fcharge, icharge)
             Error('QM charge %.6f is not roundable' % fcharge)
 
     def process_topology(self):
@@ -230,19 +243,28 @@ class QMsystem(object):
         self.process_bonds()
         self.process_angles()
         self.process_dihedrals()
-        self.add_virtual_sites2()
         self.swap_waters()
+        self.charge = self.get_system_charge(self.system)
+        self.add_virtual_sites2()
         self.process_index()
 
     def refine_system(self):
 
+        self.system = self.swap_gro2top_ids(self.system, self.itop.atoms)
+
+        ssystem = pmx.atomselection.Atomselection(atoms=self.system)
+        self.system = ssystem.expand_byres_minimal(self.igro.atoms)
+        self.system = self.swap_gro2top_ids(self.system, self.itop.atoms)
+
         self.system_raw = copy.deepcopy(self.system)
-        self.charge = self.get_system_charge(self.system_raw)
+
         self.system = self.expand_ends(self.system)
         self.system = self.swap_gro2top_ids(self.system, self.itop.atoms)
 
-        print 'Total size of QM system: %d; Charge: %d' % (
-            len(self.system), self.charge)
+        self.charge = self.get_system_charge(self.system)
+
+        print('Total size of QM system: %d; Charge: %d' % (
+            len(self.system), self.charge))
 
     def check_forcefield(self):
         if self.LA not in self.itop.NBParams.atomtypes:
@@ -262,13 +284,16 @@ and add it to topology like:
         return True
 
     def strip_vsites2(self):
-        if self.otop.has_vsites2:
-            pass
-        else:
-            return
+        # if self.otop.has_vsites2:
+        #    pass
+        # else:
+        #    return
 
-        tops = Atomselection(atoms=self.itop.atoms)
-        gros = Atomselection(atoms=self.igro.atoms)
+        syss = Atomselection(atoms=self.system)
+        gros = Atomselection(atoms=self.ogro.atoms)
+        tops = Atomselection(atoms=self.otop.atoms)
+        tlacount = len(tops.fetch_atoms('LA'))
+        glacount = len(gros.fetch_atoms('LA'))
 
         gro = gros.fetch_atoms('LA', inv=True)
         new = Model(atoms=gro)
@@ -278,12 +303,13 @@ and add it to topology like:
         new = Model(atoms=top)
         self.otop.atoms = new.atoms
 
-        lacount = len(self.itop.atoms) - len(self.otop.atoms)
+        sys = syss.fetch_atoms('LA', inv=True)
+        self.system = sys
 
         self.otop.virtual_sites2 = []
         self.otop.has_vsites2 = False
 
-        print 'Stripped previous LA atoms: %d' % lacount
+        print('Stripped previous LA atoms: %d' % max(tlacount, glacount))
 
     def add_virtual_sites2(self):
         """Add section virtual_sites
@@ -315,7 +341,7 @@ and add it to topology like:
             aLA.q = 0.0
             aLA.m = 0.0
             aLA.resname = 'XXX'
-            aLA.resnr = len(self.otop.residues) + count
+            aLA.resnr = len(self.otop.residues) + count + 1
 
             ratio = self.__get_ratio(qm, mm)
 
@@ -329,7 +355,7 @@ and add it to topology like:
 
             count += 1
 
-        print 'Total new virtual sites: ', len(vsites2)
+        print('Total new virtual sites: ', len(vsites2))
 
         if len(vsites2) > 0:
             self.vsites2 = vsites2
@@ -516,7 +542,7 @@ and add it to topology like:
         return ratio
 
     def expand_ends(self, atoms):
-        result = atoms
+        result = [i for i in atoms]
 
         resnrs = list(set(map(lambda x: x.resnr, atoms)))
 
@@ -561,7 +587,10 @@ and add it to topology like:
 
         N = Atomselection(atoms=res).fetch_atoms(['N'])[0]
 
-        C = preres.fetch_atoms(['C'])[0]
+        try:
+            C = preres.fetch_atoms(['C'])[0]
+        except:
+            Error('Bad residue %d %s' % (res[0].resnr, res[0].resname))
 
         if self.itop.is_bond(N, C):
             result = preres.fetch_atoms(['C', 'O'])
@@ -571,7 +600,7 @@ and add it to topology like:
         return result
 
     def expand_c_terminus(self, res):
-        result = res
+        result = [i for i in res]
 
         resnr = res[-1].resnr
 
@@ -588,7 +617,47 @@ and add it to topology like:
 
         return result
 
+    def strip_sol_ions(self):
+        molecules = OD(self.otop.molecules)
+
+        top = self.otop.atoms
+        tops = Atomselection(atoms=top)
+        start = len(self.otop.atoms)
+
+        # gro = self.ogro.atoms
+        # gros = Atomselection(atoms=gro)
+
+        print("Searching sol_ions")
+
+        for r in self.sol_ions:
+            rtop = tops.fetch_atoms(r, how='byresname')
+            if rtop:
+                nr = len(map(lambda x: x.resname, rtop))
+                try:
+                    molecules[r] += nr
+                except KeyError:
+                    pass
+
+                top = tops.fetch_atoms(r, how='byresname', inv=True)
+                tops = Atomselection(atoms=top)
+
+                # gro = gros.fetch_atoms(r, how='byresname', inv=True)
+                # gros = Atomselection(atoms=gro)
+
+        new = Model(atoms=top)
+        self.otop.atoms = new.atoms
+        end = len(self.otop.atoms)
+
+        self.otop.molecules = molecules
+
+        # new = Model(atoms=gro)
+        # self.ogro.atoms = new.atoms
+
+        print('Stripped %d sol and ions atoms from topology' % (start - end))
+
     def swap_waters(self):
+        self.strip_sol_ions()
+
         res = OD(map(lambda x: (x.resnr, x.resname), self.system))
 
         if len(set.intersection(set(self.sol_ions), set(res.values()))) > 0:
@@ -596,17 +665,19 @@ and add it to topology like:
         else:
             return
 
-        ogro = self.ogro
-
-        sogro = Atomselection(atoms=ogro.atoms)
+        sogro = Atomselection(atoms=self.ogro.atoms)
 
         res2top = []
+
         molecules = OD(self.otop.molecules)
 
         for k, v in res.items():
             if v in self.sol_ions:
                 res2top.append(k)
-                molecules[v] -= 1
+                try:
+                    molecules[v] -= 1
+                except KeyError:
+                    pass
 
         self.otop.molecules = map(list, molecules.items())
 
@@ -620,7 +691,7 @@ and add it to topology like:
         self.ogro.atoms = a2top_inv
         self.update_atoms(a2top)
 
-        print 'Found water and/or ions in QM system. Total: %d' % len(a2top)
+        print('Found water and/or ions in QM system. Total: %d' % len(a2top))
 
     def assign_sol_ions_type(self, a):
 
@@ -648,11 +719,13 @@ and add it to topology like:
 
         return swap
 
-    def dump_qmsystem(self, fname):
+    def write_system(self, fname):
         res = OD(map(lambda x: (x.resnr, x.resname), self.system))
         syss = Atomselection(atoms=self.system)
 
-        line = "# QM system\n{\n"
+        line = "# QM system\n"
+        line += "# CHARGE: %d\n" % self.charge
+        line += "{\n"
         for i in res.keys():
             atoms = syss.fetch_atoms(i, how='byresnr')
             aname = map(lambda x: x.name, atoms)
@@ -675,6 +748,10 @@ def run():
                         help='Input file with description of qm system',
                         dest='iqmfn',
                         required=True)
+    parser.add_argument('-r', '--refine',
+                        action='store_true',
+                        dest='refine',
+                        help='Refine system: expand byres, terminal NH and CO')
     parser.add_argument('-p', '--input-topology',
                         type=str,
                         help='Input topology',
