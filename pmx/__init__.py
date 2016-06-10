@@ -47,10 +47,12 @@ from molecule import *
 from chain import *
 from model import *
 from options import *
+from qmmm import QMsystem
+from ndx import IndexFile
+from forcefield2 import Topology
 
-
-XX       =  0             
-YY       =  1             
+XX       =  0
+YY       =  1
 ZZ       =  2
 
 
