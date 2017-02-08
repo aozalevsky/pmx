@@ -30,6 +30,8 @@ class QMsystem(object):
         'NA',
         'CL',
         'K',
+        'MG',
+        'CRW',
     ]
 
     sol_ions_type = {
@@ -38,6 +40,8 @@ class QMsystem(object):
         'HW2': {'type': 'HW', 'mass': 1.00800, 'charge': 0.417},
         'NA': {'type': 'Na', 'mass': 22.99, 'charge': 1.0000},
         'K': {'type': 'K', 'mass': 39.10, 'charge': 1.0000},
+        'Mg': {'type': 'MG', 'mass': 24.305, 'charge': 2.0000},
+        'MG': {'type': 'MG', 'mass': 24.305, 'charge': 2.0000},
         'CL': {'type': 'Cl', 'mass': 35.45, 'charge': -1.0000},
     }
 
@@ -111,7 +115,7 @@ class QMsystem(object):
 
         try:
             self.igro = Model(self.igrofn)
-        except:
+        except Exception:
             Error('Unable to open input gro %s' % self.igrofn)
 
         if not self.ogrofn:
@@ -167,6 +171,8 @@ class QMsystem(object):
     def add_residues(self, residues):
         for i in residues.items():
             resi, atoms = i
+#            resn = self.igro.residues[resi - 1].resname
+#            if resn not in self.sol_ions:
             self.add_residue(resi, **atoms)
 
     def __missing_atom(self, at, res):
@@ -181,7 +187,7 @@ class QMsystem(object):
                 'simultaneously in residue %d in %s' %
                 (resi, self.iqmfn))
 
-        res = self.itop.residues[resi - 1]
+        res = self.igro.residues[resi - 1]
         tatoms = np.array(res.atoms)
         tnames = map(lambda x: x.name, tatoms)
 
@@ -209,7 +215,8 @@ class QMsystem(object):
                 except ValueError:
                     self.__missing_atom(at, res)
 
-        self.system = list(set(self.system.extend(tatoms[tmask])))
+        self.system.extend(tatoms[tmask])
+        self.system = list(set(self.system))
 
     def check_qm_system(self):
 
@@ -235,16 +242,17 @@ class QMsystem(object):
             return icharge
         else:
             print(fcharge, icharge)
-            Error('QM charge %.6f is not roundable' % fcharge)
+            print('QM charge %.6f is not roundable' % fcharge)
+            return icharge
 
     def process_topology(self):
 
         self.check_forcefield()
+        self.swap_waters()
+        self.charge = self.get_system_charge(self.system)
         self.process_bonds()
         self.process_angles()
         self.process_dihedrals()
-        self.swap_waters()
-        self.charge = self.get_system_charge(self.system)
         self.add_virtual_sites2()
         self.process_index()
 
@@ -263,7 +271,7 @@ class QMsystem(object):
 
         self.charge = self.get_system_charge(self.system)
 
-        print('Total size of QM system: %d; Charge: %d' % (
+        print('Total size of QM system: %d; Charge: %.1f' % (
             len(self.system), self.charge))
 
     def check_forcefield(self):
@@ -334,7 +342,7 @@ and add it to topology like:
 
             aLA = pmx.Atom()
             aLA.id = len(self.otop.atoms) + count
-            aLA.cgnr = aLA.id
+            aLA.cgnr = aLA.id + 1
             aLA.atomtype = self.LA
             aLA.atomtypeB = None
             aLA.name = self.LA
@@ -342,6 +350,7 @@ and add it to topology like:
             aLA.m = 0.0
             aLA.resname = 'XXX'
             aLA.resnr = len(self.otop.residues) + count + 1
+            aLA.symbol = 'H'
 
             ratio = self.__get_ratio(qm, mm)
 
@@ -349,7 +358,7 @@ and add it to topology like:
             aj = np.array(self.ogro.atoms[mm.id - 1].x)
             aLA.x = ai + (aj - ai) * ratio
 
-            site = [aLA, qm, mm, 1, ratio]
+            site = [aLA, qm, mm, 1, ratio, '; qmmm']
 
             vsites2.append(site)
 
@@ -385,6 +394,9 @@ and add it to topology like:
 
         self.otop.atoms = newtop.atoms
         self.ogro.atoms = newgro.atoms
+
+        for a in newgro.atoms:
+            a.cgnr = a.id
 
         return range(start + 1, start + 1 + l)
 
@@ -600,6 +612,7 @@ and add it to topology like:
         return result
 
     def expand_c_terminus(self, res):
+        C, N = None, None
         result = [i for i in res]
 
         resnr = res[-1].resnr
@@ -607,12 +620,15 @@ and add it to topology like:
         C = Atomselection(atoms=res).fetch_atoms(['C'])[-1]
 
         mmsys = Atomselection(atoms=self.itop.atoms)
-        preres = Atomselection(
-            atoms=mmsys.fetch_atoms(resnr + 1, how='byresnr'))
 
-        N = preres.fetch_atoms(['N'])[0]
+        try:
+            preres = Atomselection(
+                atoms=mmsys.fetch_atoms(resnr + 1, how='byresnr'))
+            N = preres.fetch_atoms(['N'])[0]
+        except:
+            print('Warning: May be terminal residue?')
 
-        if self.itop.is_bond(C, N):
+        if (C and N) and self.itop.is_bond(C, N):
             result.extend(preres.fetch_atoms(['N', 'H']))
 
         return result
@@ -648,7 +664,7 @@ and add it to topology like:
         self.otop.atoms = new.atoms
         end = len(self.otop.atoms)
 
-        self.otop.molecules = molecules
+        self.otop.molecules = map(list, molecules.items())
 
         # new = Model(atoms=gro)
         # self.ogro.atoms = new.atoms
@@ -696,7 +712,7 @@ and add it to topology like:
     def assign_sol_ions_type(self, a):
 
         a.atomtype = self.sol_ions_type[a.name]['type']
-        a.cgnr = 1
+        a.cgnr = a.id
         a.atomtypeB = None
         a.q = self.sol_ions_type[a.name]['charge']
         a.m = self.sol_ions_type[a.name]['mass']

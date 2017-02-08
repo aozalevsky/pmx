@@ -883,9 +883,9 @@ class TopolBase:
         print >>fp, '\n [ virtual_sites2 ]'
         print >>fp, ';  ai    aj    ak    funct            c0'
         for vs in self.virtual_sites2:
-            if len(vs) == 5:
-                print >>fp, "%6d %6d %6d %4d %8.3f" % (
-                    vs[0].id, vs[1].id, vs[2].id, vs[3], vs[4])
+            if len(vs) == 6:
+                print >>fp, "%6d %6d %6d %4d %8.3f %s" % (
+                    vs[0].id, vs[1].id, vs[2].id, vs[3], vs[4], vs[5])
             else:
                 sys.stderr.write(
                     'EEK! Something went wrong while writing virtual_sites2!\n')
@@ -927,6 +927,33 @@ class TopolBase:
         print >>fp, '[ molecules ]'
         for mol, num in self.molecules:
             print >>fp, "%s %d" % (mol, num)
+
+    def write_rtp(self, filename='mol.rtp'):
+        fp = open(filename, 'w')
+        print >>fp, '[ %s ]' % self.name
+        print >>fp, ' [ atoms ]'
+        for atom in self.atoms:
+            print >>fp, "%8s %-12s %8.6f %5d" % \
+                (atom.name, atom.atomtype, atom.q, atom.cgnr)
+
+        print >>fp, '\n [ bonds ]'
+        for bond in self.bonds:
+            print >>fp, "%8s %8s" % \
+                (bond[0].name, bond[1].name)
+
+        print >>fp, '\n [ angles ]'
+        for ang in self.angles:
+            print >>fp, '%6s %6s %6s %6d %14.6f %14.6f' % (
+                ang[0].name, ang[1].name, ang[2].name,
+                ang[3], ang[4][0], ang[4][1])
+
+        print >>fp, '\n [ dihedrals ]'
+        for d in self.dihedrals:
+            try:
+                print >>fp, "%6s %6s %6s %6s %4d %s" % (
+                    d[0].name, d[1].name, d[2].name, d[3].name, d[4], d[5])
+            except Exception, e:
+                print e, d
 
     # ========================================================================
     #    other functions
@@ -1055,7 +1082,6 @@ class Topology(TopolBase):
             if mol[0] == molname:
                 self.molecules[i][1] = n
                 mol_exists = True
-        if not mol_exists:
             self.molecules.append([molname, n])
 
     def del_molecule(self, molname):

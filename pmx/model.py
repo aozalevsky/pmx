@@ -347,7 +347,14 @@ class Model(Atomselection):
             name = line[10:15].strip()
             idx = int(line[15:20])
             rest = line[20:].split()
-            assert len(rest) in [3, 6]
+            #  assert len(rest) in [3, 6]
+            try:
+                assert len(rest) >= 3
+            except:
+                print resi
+                assert len(rest) >= 3
+                raise
+
             x = float(rest[0])
             y = float(rest[1])
             z = float(rest[2])
