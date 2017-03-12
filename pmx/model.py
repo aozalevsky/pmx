@@ -38,6 +38,7 @@ from atom import Atom
 import model
 from molecule import Molecule
 from atomselection import Atomselection
+import numpy as np
 
 
 __doc__ = """
@@ -346,19 +347,20 @@ class Model(Atomselection):
             resname = line[5:9].strip()
             name = line[10:15].strip()
             idx = int(line[15:20])
-            rest = line[20:].split()
+            coords = np.fromstring(line[20:], dtype=np.float, count=3, sep=' ')
+            # rest = line[20:].split()
             #  assert len(rest) in [3, 6]
             try:
-                assert len(rest) >= 3
+                assert len(coords) >= 3
             except:
-                print resi
-                assert len(rest) >= 3
+                print(resi)
+                assert len(coords) >= 3
                 raise
 
-            x = float(rest[0])
-            y = float(rest[1])
-            z = float(rest[2])
-            coords = [x, y, z]
+#            x = float(rest[0])
+#            y = float(rest[1])
+#            z = float(rest[2])
+#            coords = [x, y, z]
             if len(rest) == 6:
                 vx = float(rest[3])
                 vy = float(rest[4])
@@ -422,8 +424,8 @@ class Model(Atomselection):
 
     def remove_chain(self, key):
         if key not in self.chdic:
-            print 'No chain %s to remove....' % key
-            print 'No changes applied.'
+            print('No chain %s to remove....' % key)
+            print('No changes applied.')
             return
         for ch in self.chains:
             if ch.id == key:
