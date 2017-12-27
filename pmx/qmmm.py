@@ -593,6 +593,9 @@ and add it to topology like:
 
         resnr = res[0].resnr
 
+        if resnr == 1:
+            return result
+
         mmsys = Atomselection(atoms=self.itop.atoms)
         preres = Atomselection(
             atoms=mmsys.fetch_atoms(resnr - 1, how='byresnr'))
@@ -652,7 +655,7 @@ and add it to topology like:
                 try:
                     molecules[r] += nr
                 except KeyError:
-                    pass
+                    molecules[r] = nr
 
                 top = tops.fetch_atoms(r, how='byresname', inv=True)
                 tops = Atomselection(atoms=top)
