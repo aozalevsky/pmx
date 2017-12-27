@@ -651,7 +651,7 @@ and add it to topology like:
         for r in self.sol_ions:
             rtop = tops.fetch_atoms(r, how='byresname')
             if rtop:
-                nr = len(map(lambda x: x.resname, rtop))
+                nr = len(set(map(lambda x: x.resnr, rtop)))
                 try:
                     molecules[r] += nr
                 except KeyError:
