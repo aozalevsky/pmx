@@ -361,13 +361,13 @@ class Model(Atomselection):
 #            y = float(rest[1])
 #            z = float(rest[2])
 #            coords = [x, y, z]
-            if len(rest) == 6:
-                vx = float(rest[3])
-                vy = float(rest[4])
-                vz = float(rest[5])
-                vel = [vx, vy, vz]
-            else:
-                vel = [0, 0, 0]
+#            if len(rest) == 6:
+#                vx = float(rest[3])
+#                vy = float(rest[4])
+#                vz = float(rest[5])
+#                vel = [vx, vy, vz]
+#            else:
+            vel = [0, 0, 0]
             a = Atom(id=idx, name=name, resname=resname,
                      resnr=resid, x=coords, v=vel, unity='nm')
             a.get_symbol()
