@@ -44,7 +44,7 @@ Functions to read gromacs forcefield files
 
 
 def TR(s):
-    print "pmx.forcefield_> " + s
+    print("pmx.forcefield_> " + s)
 
 # def
 # cpp_parse_file(fn,cpp_defs=[],cpp_path=[os.environ.get('GMXDATA')+'/top']
@@ -185,9 +185,17 @@ class TopolBase:
     def read_molecules(self, lines):
         lst = readSection(lines, '[ molecules ]', '[')
         self.molecules = []
+        molecules_ = dict()
         for line in lst:
             entr = line.split()
-            self.molecules.append([entr[0], int(entr[1])])
+            if entr[0] in molecules_:
+                molecules_[entr[0]] += int(entr[1])
+                print('Merged %s' % entr[0])
+            else:
+                molecules_[entr[0]] = int(entr[1])
+
+        for i in molecules_.items():
+            self.molecules.appen([i[0], i[1]])
 
     def read_moleculetype(self, lines):
         l = readSection(lines, '[ moleculetype ]', '[')
@@ -530,7 +538,7 @@ class TopolBase:
             for line in self.footer:
                 print >>fp, line
         except:
-            print "No footer in itp\n"
+            print("No footer in itp\n")
 
     def write_moleculetype(self, fp):
         print >>fp, '[ moleculetype ]'
@@ -733,7 +741,7 @@ class TopolBase:
                             ang[0].id, ang[1].id, ang[2].id,
                             ang[3], ang[4][0], ang[4][1])
                     else:
-                        print "Don't know how to print angletype %d" % ang[3]
+                        print("Don't know how to print angletype %d" % ang[3])
                         exit()
                 if state == 'AB':
                     # print ang[0].id, ang[1].id, ang[2].id
@@ -759,7 +767,7 @@ class TopolBase:
                              ang[5][2], ang[5][3], ang[5][4],
                              ang[0].name, ang[1].name, ang[2].name)
                     else:
-                        print "Don't know how to print angletype %d" % ang[3]
+                        print("Don't know how to print angletype %d" % ang[3])
                         exit()
                 elif state == 'AA':
                     if ang[3] == 1:
@@ -779,7 +787,7 @@ class TopolBase:
                              ang[4][2], ang[4][3], ang[4][4],
                              ang[0].name, ang[1].name, ang[2].name)
                     else:
-                        print "Don't know how to print angletype %d" % ang[3]
+                        print("Don't know how to print angletype %d" % ang[3])
                         exit()
                 elif state == 'BB':
                     if ang[3] == 1:
@@ -798,7 +806,7 @@ class TopolBase:
                              ang[5][2], ang[5][3], ang[5][4],
                              ang[0].name, ang[1].name, ang[2].name)
                     else:
-                        print "Don't know how to print angletype %d" % ang[3]
+                        print("Don't know how to print angletype %d" % ang[3])
                         exit()
 
     def write_cmap(self, fp):
@@ -824,12 +832,12 @@ class TopolBase:
                 ast = d[5]
                 bs = d[6]
                 if ast is None or bs is None:
-                    print d[0].name, d[1].name, d[2].name, d[3].name, \
+                    print(d[0].name, d[1].name, d[2].name, d[3].name, \
                         d[0].atomtype, d[1].atomtype, d[2].atomtype, \
                         d[3].atomtype, d[0].atomtypeB, d[1].atomtypeB, \
-                        d[2].atomtypeB, d[3].atomtypeB
-                    print d[0].type, d[1].type, d[2].type, d[3].type, \
-                        d[0].typeB, d[1].typeB, d[2].typeB, d[3].typeB
+                        d[2].atomtypeB, d[3].atomtypeB)
+                    print(d[0].type, d[1].type, d[2].type, d[3].type, \
+                        d[0].typeB, d[1].typeB, d[2].typeB, d[3].typeB)
 
                 if ast == 'NULL':
                     if d[4] == 3:  # Ryckaert-Bellemans
@@ -889,7 +897,7 @@ class TopolBase:
             else:
                 sys.stderr.write(
                     'EEK! Something went wrong while writing virtual_sites2!\n')
-                print vs
+                print(vs)
                 sys.exit(1)
 
     def write_vsites3(self, fp):
@@ -902,7 +910,7 @@ class TopolBase:
             else:
                 sys.stderr.write(
                     'EEK! Something went wrong while writing virtual_sites3!\n')
-                print vs
+                print(vs)
                 sys.exit(1)
 
     def write_vsites4(self, fp):
@@ -916,7 +924,7 @@ class TopolBase:
             else:
                 sys.stderr.write(
                     'EEK! Something went wrong while writing virtual_sites4!\n')
-                print vs
+                print(vs)
                 sys.exit(1)
 
     def write_system(self, fp):
