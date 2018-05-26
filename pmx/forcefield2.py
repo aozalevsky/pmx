@@ -195,7 +195,7 @@ class TopolBase:
                 molecules_[entr[0]] = int(entr[1])
 
         for i in molecules_.items():
-            self.molecules.appen([i[0], i[1]])
+            self.molecules.append([i[0], i[1]])
 
     def read_moleculetype(self, lines):
         l = readSection(lines, '[ moleculetype ]', '[')
