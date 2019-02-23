@@ -36,7 +36,7 @@ from molecule import Molecule
 from parser import kickOutComments, readSection, parseList
 from collections import OrderedDict
 from ffparser import BondedParser, NBParser, RTPParser
-
+from collections import OrderedDict as OD
 
 __doc__ = """
 Functions to read gromacs forcefield files
@@ -185,7 +185,7 @@ class TopolBase:
     def read_molecules(self, lines):
         lst = readSection(lines, '[ molecules ]', '[')
         self.molecules = []
-        molecules_ = dict()
+        molecules_ = OD()
         for line in lst:
             entr = line.split()
             if entr[0] in molecules_:

@@ -31,6 +31,7 @@ class QMsystem(object):
         'CL',
         'K',
         'MG',
+        'CA',
         'CRW',
     ]
 
@@ -43,6 +44,7 @@ class QMsystem(object):
         'Mg': {'type': 'MG', 'mass': 24.305, 'charge': 2.0000},
         'MG': {'type': 'MG', 'mass': 24.305, 'charge': 2.0000},
         'CL': {'type': 'Cl', 'mass': 35.45, 'charge': -1.0000},
+        'CA': {'type': 'C0', 'mass': 40.08, 'charge': 2.0000},
     }
 
     iqm = None
@@ -237,7 +239,20 @@ class QMsystem(object):
         atoms = self.swap_gro2top_ids(atoms, self.itop.atoms)
 
         fcharge = sum((map(lambda x: x.q, atoms)))
-        icharge = int(round(fcharge))
+        icharge = np.ceil(fcharge)
+        if np.isclose(fcharge, icharge, rtol=1e-03):
+            return icharge
+        else:
+            print(fcharge, icharge)
+            print('QM charge %.6f is not roundable' % fcharge)
+            return icharge
+
+    def __get_system_charge(self, atoms=None):
+        if not atoms:
+            atoms = self.system
+
+        fcharge = sum((map(lambda x: x.q, atoms)))
+        icharge = np.ceil(fcharge)
         if np.isclose(fcharge, icharge, rtol=1e-03):
             return icharge
         else:
@@ -605,7 +620,8 @@ and add it to topology like:
         try:
             C = preres.fetch_atoms(['C'])[0]
         except:
-            Error('Bad residue %d %s' % (res[0].resnr, res[0].resname))
+            Error('Bad residue %d %s and preres ' % (
+                res[0].resnr, res[0].resname,))
 
         if self.itop.is_bond(N, C):
             result = preres.fetch_atoms(['C', 'O'])
@@ -646,16 +662,21 @@ and add it to topology like:
         # gro = self.ogro.atoms
         # gros = Atomselection(atoms=gro)
 
+        newmolecules = OD()
+
         print("Searching sol_ions")
 
         for r in self.sol_ions:
             rtop = tops.fetch_atoms(r, how='byresname')
             if rtop:
                 nr = len(set(map(lambda x: x.resnr, rtop)))
-                try:
+
+                if r in molecules:
                     molecules[r] += nr
-                except KeyError:
-                    molecules[r] = nr
+                elif r in newmolecules:
+                    newmolecules[r] += nr
+                else:
+                    newmolecules[r] = nr
 
                 top = tops.fetch_atoms(r, how='byresname', inv=True)
                 tops = Atomselection(atoms=top)
@@ -667,7 +688,17 @@ and add it to topology like:
         self.otop.atoms = new.atoms
         end = len(self.otop.atoms)
 
-        self.otop.molecules = map(list, molecules.items())
+        moleculesi_ = map(list, molecules.items())
+
+        molecules_ = [moleculesi_[0]]
+
+        if newmolecules:
+            newmoleculesi_ = map(list, newmolecules.items())
+            molecules_.extend(newmoleculesi_)
+
+        molecules_.extend(moleculesi_[1:])
+
+        self.otop.molecules = molecules_
 
         # new = Model(atoms=gro)
         # self.ogro.atoms = new.atoms
@@ -695,8 +726,15 @@ and add it to topology like:
                 res2top.append(k)
                 try:
                     molecules[v] -= 1
+
                 except KeyError:
                     pass
+
+        # check if there are now empty groups
+
+        for k, v in molecules.items():
+            if v == 0:
+                molecules.pop(k)
 
         self.otop.molecules = map(list, molecules.items())
 
