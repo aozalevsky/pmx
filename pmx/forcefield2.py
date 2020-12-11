@@ -126,7 +126,11 @@ class TopolBase:
         entr = line.split()
         idx = int(entr[0])
         atomtype = entr[1]
-        resnr = int(entr[2])
+        try:
+            resnr = int(entr[2])
+        except:
+            # Dirty fix for residue indexes like 1H
+            resnr = int(entr[2][:-1])
         resname = entr[3]
         name = entr[4]
         cgnr = int(entr[5])
