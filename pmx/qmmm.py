@@ -369,9 +369,9 @@ and add it to topology like:
 
             ratio = self.__get_ratio(qm, mm)
 
-            ai = np.array(self.ogro.atoms[qm.id - 1].x)
-            aj = np.array(self.ogro.atoms[mm.id - 1].x)
-            aLA.x = ai + (aj - ai) * ratio
+            ai_ = np.array(self.ogro.atoms[qm.id - 1].x)
+            aj_ = np.array(self.ogro.atoms[mm.id - 1].x)
+            aLA.x = ai_ + (aj_ - ai_) * ratio
 
             site = [aLA, qm, mm, 1, ratio, '; qmmm']
 
